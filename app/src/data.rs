@@ -1,0 +1,319 @@
+//! Settings and saved data: plain `key=value` / line files in %LOCALAPPDATA%\MyNotch.
+use chrono::NaiveDate;
+use std::{collections::BTreeMap, fs, path::PathBuf, str::FromStr};
+
+// Values from the original (see MECHANICS.md).
+pub const SIZE_NAMES: [&str; 4] = ["Small", "Medium", "Large", "Extra large"];
+pub const SIZE_SCALES: [f32; 4] = [1.0, 1.15, 1.3, 1.5];
+pub const BOTTLE_STEP: u32 = 50;
+pub const BOTTLE_MIN: u32 = 100;
+pub const BOTTLE_MAX: u32 = 2000;
+pub const HOURS_STEP: u16 = 30;
+pub const FROM_MAX: u16 = 1380;
+pub const UNTIL_MAX: u16 = 1440;
+pub const MIN_SPAN: u16 = 60;
+pub const GOALS: [u32; 4] = [1500, 2000, 2500, 3000];
+pub const CLIP_MAX_FREE: usize = 5;
+pub const SNOOZES: [u32; 3] = [5, 10, 15];
+pub const PRAYER_EARLY_MIN: u32 = 10;
+pub const WATER_SNOOZE_MIN: u32 = 10; // 0x1400583ab: snooze = now + 10, capped at 23:59
+pub const REFILL_FRACTION: f32 = 0.75; // 0x140002222: refill when bottle < 0.75 x one drink
+
+pub fn dir() -> PathBuf {
+    let base = std::env::var_os("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let d = base.join("MyNotch");
+    let _ = fs::create_dir_all(&d);
+    d
+}
+
+pub fn read(name: &str) -> String {
+    fs::read_to_string(dir().join(name)).unwrap_or_default()
+}
+
+pub fn write(name: &str, text: &str) {
+    // Write then rename so a crash mid-write never leaves a half file.
+    let p = dir().join(name);
+    let tmp = p.with_extension("tmp");
+    if fs::write(&tmp, text).is_ok() {
+        let _ = fs::rename(&tmp, &p);
+    }
+}
+
+pub fn kv(text: &str) -> BTreeMap<String, String> {
+    text.lines().filter_map(|l| l.split_once('=')).map(|(k, v)| (k.trim().into(), v.trim().into())).collect()
+}
+
+fn get<T: FromStr>(m: &BTreeMap<String, String>, k: &str, d: T) -> T {
+    m.get(k).and_then(|v| v.parse().ok()).unwrap_or(d)
+}
+
+#[derive(Clone, PartialEq)]
+pub struct Settings {
+    pub startup: bool,
+    pub size: usize,
+    pub minimal: bool,
+    pub open_click: bool,
+    pub sound: bool,
+    pub status_ring: usize, // 0 water, 1 tasks done today, 2 no ring
+    pub focus: u32,
+    pub short_break: u32,
+    pub long_break: u32,
+    pub todo_start: bool,
+    pub todo_end: bool,
+    pub snooze: u32,
+    pub water: bool,
+    pub goal: u32,
+    pub bottle: u32,
+    pub from: u16,
+    pub until: u16,
+    pub prayer: bool,
+    pub prayer_city: usize,
+    pub prayer_reminder: bool,
+    pub prayer_early: bool,
+    pub prayer_pause_media: bool,
+    pub today_page: bool,
+    pub prayer_adj: [i32; 5], // minutes; stored as value + 10 like the original
+    pub clipboard: bool,
+    pub clipboard_max: usize,
+    pub clipboard_keep: bool,
+    pub shelf_clear: bool,
+    pub popup_battery: bool,
+    pub popup_wifi: bool,
+    pub hide_fullscreen: bool,
+    pub lyrics: bool,
+    pub hud_volume: bool,
+    pub hud_caps: bool,
+    pub hud_language: bool,
+    pub hud_brightness: bool,
+    pub popup_bluetooth: bool,
+    pub notifications: bool,
+    pub notification_preview: bool,
+    pub mascot: bool,
+    pub widget_city1: usize,
+    pub widget_city2: usize,
+    pub widget_event: usize,
+    pub widget_left: usize,
+    pub widget_right: usize,
+    pub week_monday: bool,
+}
+
+impl Settings {
+    pub fn load() -> Self {
+        Self::from_text(&read("settings.txt"), &read("water.txt"))
+    }
+
+    pub fn from_text(text: &str, water: &str) -> Self {
+        let m = kv(text);
+        let w = kv(water);
+        let mut s = Settings {
+            startup: get(&m, "startup", false),
+            size: get(&m, "size", 0usize).min(3),
+            minimal: get(&m, "minimal", false),
+            open_click: get(&m, "open_click", false),
+            sound: get(&m, "sound", true),
+            status_ring: get(&m, "status_ring", 0usize).min(2),
+            focus: get(&m, "focus", 25),
+            short_break: get(&m, "short_break", 5),
+            long_break: get(&m, "long_break", 15),
+            todo_start: get(&m, "todo_start", true),
+            todo_end: get(&m, "todo_end", true),
+            snooze: get(&m, "snooze", 10u32),
+            // Water settings live in water.txt (keys from 0x1400e31e0), defaults from 0x140049847.
+            water: get(&w, "on", 1u8) != 0,
+            goal: get(&w, "goal", 1500),
+            bottle: get(&w, "bottle", 500u32).clamp(BOTTLE_MIN, BOTTLE_MAX),
+            from: get(&w, "start", 480u16).min(FROM_MAX),
+            until: get(&w, "end", 1020u16),
+            prayer: get(&m, "prayer", false),
+            prayer_city: get(&m, "prayer_city", crate::prayer::DEFAULT_CITY).min(crate::prayer::CITIES.len() - 1),
+            prayer_reminder: get(&m, "prayer_reminder", true),
+            prayer_early: get(&m, "prayer_early", false),
+            // Both off by default, as in the original's settings table (0x1400e1320).
+            prayer_pause_media: get(&m, "prayer_pause_media", false),
+            today_page: get(&m, "today_page", false),
+            prayer_adj: ["prayer_adj_subuh", "prayer_adj_dzuhur", "prayer_adj_ashar", "prayer_adj_maghrib", "prayer_adj_isya"]
+                .map(|k| get(&m, k, 10i32) - 10),
+            clipboard: get(&m, "clipboard", false),
+            clipboard_max: get(&m, "clipboard_max", CLIP_MAX_FREE).clamp(1, CLIP_MAX_FREE),
+            clipboard_keep: get(&m, "clipboard_keep", false),
+            shelf_clear: get(&m, "shelf_clear", false),
+            popup_battery: get(&m, "popup_battery", true),
+            popup_wifi: get(&m, "popup_wifi", true),
+            hide_fullscreen: get(&m, "hide_fullscreen", true),
+            lyrics: get(&m, "lyrics", true),
+            hud_volume: get(&m, "hud_volume", true),
+            hud_caps: get(&m, "hud_caps", true),
+            hud_language: get(&m, "hud_language", true),
+            hud_brightness: get(&m, "hud_brightness", true),
+            popup_bluetooth: get(&m, "popup_bluetooth", true),
+            notifications: get(&m, "notifications", true),
+            notification_preview: get(&m, "notification_preview", false),
+            mascot: get(&m, "mascot", false),
+            widget_city1: get(&m, "widget_city1", 5usize),
+            widget_city2: get(&m, "widget_city2", 13usize),
+            widget_event: get(&m, "widget_event", 1usize),
+            widget_left: get(&m, "widget_left", 0usize),
+            widget_right: get(&m, "widget_right", 1usize),
+            week_monday: get(&m, "week_monday", false),
+        };
+        // Same clamp as the original's loader (0x14004aa9e): until within [from + 60, 24:00].
+        s.until = s.until.max(s.from + MIN_SPAN).min(UNTIL_MAX);
+        s
+    }
+
+    pub fn save(&self) {
+        let s = self;
+        let lines = [
+            format!("startup={}", s.startup),
+            format!("size={}", s.size),
+            format!("minimal={}", s.minimal),
+            format!("open_click={}", s.open_click),
+            format!("sound={}", s.sound),
+            format!("status_ring={}", s.status_ring),
+            format!("focus={}", s.focus),
+            format!("short_break={}", s.short_break),
+            format!("long_break={}", s.long_break),
+            format!("todo_start={}", s.todo_start),
+            format!("todo_end={}", s.todo_end),
+            format!("snooze={}", s.snooze),
+            format!("prayer={}", s.prayer),
+            format!("prayer_city={}", s.prayer_city),
+            format!("prayer_reminder={}", s.prayer_reminder),
+            format!("prayer_early={}", s.prayer_early),
+            format!("prayer_pause_media={}", s.prayer_pause_media),
+            format!("today_page={}", s.today_page),
+            format!("prayer_adj_subuh={}", s.prayer_adj[0] + 10),
+            format!("prayer_adj_dzuhur={}", s.prayer_adj[1] + 10),
+            format!("prayer_adj_ashar={}", s.prayer_adj[2] + 10),
+            format!("prayer_adj_maghrib={}", s.prayer_adj[3] + 10),
+            format!("prayer_adj_isya={}", s.prayer_adj[4] + 10),
+            format!("clipboard={}", s.clipboard),
+            format!("clipboard_max={}", s.clipboard_max),
+            format!("clipboard_keep={}", s.clipboard_keep),
+            format!("shelf_clear={}", s.shelf_clear),
+            format!("popup_battery={}", s.popup_battery),
+            format!("popup_wifi={}", s.popup_wifi),
+            format!("hide_fullscreen={}", s.hide_fullscreen),
+            format!("lyrics={}", s.lyrics),
+            format!("hud_volume={}", s.hud_volume),
+            format!("hud_caps={}", s.hud_caps),
+            format!("hud_language={}", s.hud_language),
+            format!("hud_brightness={}", s.hud_brightness),
+            format!("popup_bluetooth={}", s.popup_bluetooth),
+            format!("notifications={}", s.notifications),
+            format!("notification_preview={}", s.notification_preview),
+            format!("mascot={}", s.mascot),
+            format!("widget_city1={}", s.widget_city1),
+            format!("widget_city2={}", s.widget_city2),
+            format!("widget_event={}", s.widget_event),
+            format!("widget_left={}", s.widget_left),
+            format!("widget_right={}", s.widget_right),
+            format!("week_monday={}", s.week_monday),
+        ];
+        write("settings.txt", &lines.join("\n"));
+    }
+
+    /// The original's water plan (0x14004ab75): span = max(until - from, 60);
+    /// reminders = min(clamp(round(goal / 25), 1, 64), max(floor(span / 15), 1));
+    /// each = max(round(goal / reminders), 1); interval = span / reminders;
+    /// refills = max(ceil(goal / bottle) - 1, 0).
+    pub fn water_plan(&self) -> WaterPlan {
+        let span = self.until.saturating_sub(self.from).max(MIN_SPAN) as f32;
+        let goal = self.goal as f32;
+        let by_goal = (goal / 25.0).round().clamp(1.0, 64.0);
+        let reminders = by_goal.min((span / 15.0).floor().max(1.0));
+        let each = (goal / reminders).round().max(1.0) as u32;
+        let refills = ((goal / self.bottle.max(1) as f32).ceil() as u32).saturating_sub(1);
+        WaterPlan { reminders: reminders as u32, interval: span / reminders, each, refills }
+    }
+}
+
+pub struct WaterPlan {
+    pub reminders: u32,
+    pub interval: f32, // minutes
+    pub each: u32,
+    pub refills: u32,
+}
+
+#[derive(Clone, Default)]
+pub struct Task {
+    pub title: String,
+    pub start: Option<u16>, // minutes after midnight
+    pub dur: u16,           // minutes, 0 = no end
+    pub done_day: Option<NaiveDate>,
+    pub fired_start: bool,
+    pub fired_end: bool,
+    pub snooze_until: u32,
+}
+
+pub fn load_tasks() -> Vec<Task> {
+    read("tasks.txt")
+        .lines()
+        .filter_map(|l| {
+            let mut p = l.splitn(4, '|');
+            let done = p.next()?;
+            let start = p.next()?;
+            let dur = p.next()?;
+            Some(Task {
+                done_day: NaiveDate::parse_from_str(done, "%Y-%m-%d").ok(),
+                start: start.parse().ok(),
+                dur: dur.parse().unwrap_or(0),
+                title: p.next()?.to_string(),
+                ..Default::default()
+            })
+        })
+        .collect()
+}
+
+pub fn save_tasks(t: &[Task]) {
+    let s: Vec<String> = t
+        .iter()
+        .map(|t| {
+            let d = t.done_day.map(|d| d.to_string()).unwrap_or_else(|| "-".into());
+            let st = t.start.map(|s| s.to_string()).unwrap_or_else(|| "-".into());
+            format!("{d}|{st}|{}|{}", t.dur, t.title.replace(['\n', '|'], " "))
+        })
+        .collect();
+    write("tasks.txt", &s.join("\n"));
+}
+
+/// Clipboard entries are stored one per line with backslashes and newlines escaped.
+pub fn esc(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('\n', "\\n").replace('\r', "")
+}
+
+pub fn unesc(s: &str) -> String {
+    let mut out = String::new();
+    let mut it = s.chars();
+    while let Some(c) = it.next() {
+        if c == '\\' {
+            match it.next() {
+                Some('n') => out.push('\n'),
+                Some(o) => out.push(o),
+                None => {}
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn escape_round_trip() {
+        let s = "a\\b\nc|d";
+        assert_eq!(unesc(&esc(s)), s);
+    }
+    #[test]
+    fn water_plan_default() {
+        let s = Settings::from_text("", "");
+        assert_eq!((s.goal, s.bottle, s.from, s.until), (1500, 500, 480, 1020));
+        let p = s.water_plan();
+        // 08:00-17:00 = 540 min -> min(60, 36) = 36 reminders, 15 min apart, 42 ml each, 2 refills.
+        assert_eq!((p.reminders, p.each, p.refills), (36, 42, 2));
+        assert!((p.interval - 15.0).abs() < 1e-4);
+    }
+}

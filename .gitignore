@@ -1,0 +1,33 @@
+# Build output
+/app/target/
+target/
+
+# Private: agent transcripts, tool state, spend
+/agent-session.jsonl
+/build-activity.log
+/usage.json
+/craft.json
+/feed.json
+/inbox/
+/pinned/
+
+# Third-party original binary and reverse-engineering material
+/NusaSetup.exe
+*.exe
+/investigation.cany/
+/capture/
+/reference/
+/checks/
+
+# Generated caches
+/graphify-out/
+
+# Logs, env, IDE
+*.log
+.env
+.env.*
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

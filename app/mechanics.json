@@ -1,0 +1,480 @@
+{
+ "version": 1,
+ "values": [
+  {
+   "name": "focus",
+   "group": "pomodoro",
+   "value": 25,
+   "unit": "min",
+   "source": "settings defaults table 0x1400e1320"
+  },
+  {
+   "name": "short break",
+   "group": "pomodoro",
+   "value": 5,
+   "unit": "min",
+   "source": "settings defaults table 0x1400e1320"
+  },
+  {
+   "name": "long break",
+   "group": "pomodoro",
+   "value": 15,
+   "unit": "min",
+   "source": "settings defaults table 0x1400e1320"
+  },
+  {
+   "name": "rounds before long break",
+   "group": "pomodoro",
+   "value": 4,
+   "source": "function 0x14005eaab at 0x140063cab"
+  },
+  {
+   "name": "task later snooze",
+   "group": "to-do",
+   "value": 10,
+   "unit": "min",
+   "source": "settings defaults table 0x1400e1320"
+  },
+  {
+   "name": "task snooze choices",
+   "group": "to-do",
+   "value": "5/10/15 min",
+   "source": "string '5 min10 min15 min'"
+  },
+  {
+   "name": "daily goal default",
+   "group": "water",
+   "value": 1500,
+   "unit": "ml",
+   "source": "function 0x140049847"
+  },
+  {
+   "name": "bottle default",
+   "group": "water",
+   "value": 500,
+   "unit": "ml",
+   "source": "function 0x140049847"
+  },
+  {
+   "name": "active from default",
+   "group": "water",
+   "value": 480,
+   "unit": "min",
+   "source": "function 0x140049847"
+  },
+  {
+   "name": "active until default",
+   "group": "water",
+   "value": 1020,
+   "unit": "min",
+   "source": "function 0x140049847"
+  },
+  {
+   "name": "goal choices",
+   "group": "water",
+   "value": "1.5/2.0/2.5/3.0 L",
+   "source": "function 0x140048f51"
+  },
+  {
+   "name": "bottle size step",
+   "group": "water",
+   "value": 50,
+   "unit": "ml",
+   "source": "function 0x140053982"
+  },
+  {
+   "name": "bottle size min",
+   "group": "water",
+   "value": 100,
+   "unit": "ml",
+   "source": "function 0x140053982"
+  },
+  {
+   "name": "bottle size max",
+   "group": "water",
+   "value": 2000,
+   "unit": "ml",
+   "source": "function 0x140053982"
+  },
+  {
+   "name": "active hours step",
+   "group": "water",
+   "value": 30,
+   "unit": "min",
+   "source": "function 0x140053982"
+  },
+  {
+   "name": "active from latest",
+   "group": "water",
+   "value": 1380,
+   "unit": "min",
+   "source": "function 0x140053982"
+  },
+  {
+   "name": "active until latest",
+   "group": "water",
+   "value": 1440,
+   "unit": "min",
+   "source": "function 0x140053982"
+  },
+  {
+   "name": "minimum active span",
+   "group": "water",
+   "value": 60,
+   "unit": "min",
+   "source": "function 0x14004ab75"
+  },
+  {
+   "name": "ml per reminder divisor",
+   "group": "water",
+   "value": 25,
+   "unit": "ml",
+   "source": "function 0x14004ab75"
+  },
+  {
+   "name": "most reminders per day",
+   "group": "water",
+   "value": 64,
+   "source": "function 0x14004ab75"
+  },
+  {
+   "name": "shortest reminder gap",
+   "group": "water",
+   "value": 15,
+   "unit": "min",
+   "source": "function 0x14004ab75"
+  },
+  {
+   "name": "first reminder offset",
+   "group": "water",
+   "value": 0.5,
+   "unit": "intervals",
+   "source": "function 0x140001fe5"
+  },
+  {
+   "name": "reminder window",
+   "group": "water",
+   "value": 2,
+   "unit": "min",
+   "source": "function 0x140001fe5"
+  },
+  {
+   "name": "refill when bottle below",
+   "group": "water",
+   "value": 0.75,
+   "unit": "drinks",
+   "source": "function 0x140001fe5"
+  },
+  {
+   "name": "water snooze",
+   "group": "water",
+   "value": 10,
+   "unit": "min",
+   "source": "function 0x1400583ab"
+  },
+  {
+   "name": "snooze window",
+   "group": "water",
+   "value": 3,
+   "unit": "min",
+   "source": "function 0x140001fe5"
+  },
+  {
+   "name": "reset confirm window",
+   "group": "water",
+   "value": 3.0,
+   "unit": "s",
+   "source": "function 0x140053982"
+  },
+  {
+   "name": "subuh angle",
+   "group": "prayer",
+   "value": 20,
+   "unit": "deg",
+   "source": "function 0x140031c46"
+  },
+  {
+   "name": "isya angle",
+   "group": "prayer",
+   "value": 18,
+   "unit": "deg",
+   "source": "function 0x140031c46"
+  },
+  {
+   "name": "sunset angle",
+   "group": "prayer",
+   "value": 0.833,
+   "unit": "deg",
+   "source": "function 0x140031c46"
+  },
+  {
+   "name": "safety margin",
+   "group": "prayer",
+   "value": 2,
+   "unit": "min",
+   "source": "function 0x140031c46"
+  },
+  {
+   "name": "refinement passes",
+   "group": "prayer",
+   "value": 2,
+   "source": "function 0x140031c46"
+  },
+  {
+   "name": "default city",
+   "group": "prayer",
+   "value": "Jakarta",
+   "source": "settings defaults table 0x1400e1320"
+  },
+  {
+   "name": "cities",
+   "group": "prayer",
+   "value": 84,
+   "source": "table 0x1400df470"
+  },
+  {
+   "name": "prayer adjustment default",
+   "group": "prayer",
+   "value": 0,
+   "unit": "min",
+   "source": "function 0x1400863af"
+  },
+  {
+   "name": "prayer early reminder",
+   "group": "prayer",
+   "value": 10,
+   "unit": "min",
+   "source": "string '10 minutes before'"
+  },
+  {
+   "name": "clipboard history default",
+   "group": "shelf",
+   "value": false,
+   "source": "settings defaults table 0x1400e1320"
+  },
+  {
+   "name": "clipboard history max",
+   "group": "shelf",
+   "value": 5,
+   "source": "string 'Free: 5 items'"
+  },
+  {
+   "name": "week starts monday",
+   "group": "today",
+   "value": false,
+   "source": "settings defaults table 0x1400e1320"
+  },
+  {
+   "name": "world clock cities",
+   "group": "today",
+   "value": "Tokyo, London",
+   "source": "table 0x1400e40d8"
+  },
+  {
+   "name": "countdown default",
+   "group": "today",
+   "value": "Ramadan",
+   "source": "settings defaults table 0x1400e1320"
+  },
+  {
+   "name": "size scales",
+   "group": "appearance",
+   "value": "100/115/130/150 %",
+   "source": "string '100%115%130%150%'"
+  },
+  {
+   "name": "open panel size",
+   "group": "look",
+   "value": "548x184 pt",
+   "source": "reference pictures 3-11"
+  },
+  {
+   "name": "resting pill size",
+   "group": "look",
+   "value": "196x38 pt",
+   "source": "reference picture 14"
+  },
+  {
+   "name": "pop-up size",
+   "group": "look",
+   "value": "404x80 pt",
+   "source": "reference pictures 1, 2, 8"
+  },
+  {
+   "name": "spring stiffness",
+   "group": "motion",
+   "value": 230,
+   "source": "function 0x14007dae7 (0x1400dbb50)"
+  },
+  {
+   "name": "spring damping",
+   "group": "motion",
+   "value": 19,
+   "source": "function 0x14007dae7 (0x1400dabfc)"
+  },
+  {
+   "name": "spring stiffness leaving pop-up",
+   "group": "motion",
+   "value": 110,
+   "source": "function 0x14007dae7 (0x1400db610)"
+  },
+  {
+   "name": "spring damping leaving pop-up",
+   "group": "motion",
+   "value": 15.5,
+   "source": "function 0x14007dae7 (0x1400dadc8)"
+  },
+  {
+   "name": "spring stiffness to peek",
+   "group": "motion",
+   "value": 200,
+   "source": "function 0x14007dae7 (0x1400daa6c)"
+  },
+  {
+   "name": "spring damping to peek",
+   "group": "motion",
+   "value": 29,
+   "source": "function 0x14007dae7 (0x1400db3e0)"
+  },
+  {
+   "name": "pill ear margin",
+   "group": "look",
+   "value": 14,
+   "unit": "pt",
+   "source": "function 0x140056ff1"
+  },
+  {
+   "name": "open panel window width",
+   "group": "look",
+   "value": 520,
+   "unit": "pt",
+   "source": "function 0x140056ff1 (0x1400db7ec)"
+  },
+  {
+   "name": "hide in full screen default",
+   "group": "behaviour",
+   "value": true,
+   "source": "settings defaults table 0x1400e1320"
+  },
+  {
+   "name": "page slide distance",
+   "group": "motion",
+   "value": 120,
+   "unit": "pt",
+   "estimated": true
+  },
+  {
+   "name": "lyrics search",
+   "group": "music",
+   "value": "lrclib.net/api/search track_name+artist_name, then q",
+   "source": "function 0x14000de39"
+  },
+  {
+   "name": "lyrics choice",
+   "group": "music",
+   "value": "nearest duration among synced",
+   "source": "function 0x14000de39 at 0x14000f594"
+  },
+  {
+   "name": "title cut marks",
+   "group": "music",
+   "value": " ( / [ / - ",
+   "source": "data 0x1400e1d9c"
+  },
+  {
+   "name": "lyrics default",
+   "group": "music",
+   "value": true,
+   "source": "settings defaults table 0x1400e1320"
+  },
+  {
+   "name": "indicator stays",
+   "group": "motion",
+   "value": 1.4,
+   "unit": "s",
+   "source": "timer 6 (1400 ms) at 0x14007df9e"
+  },
+  {
+   "name": "network pop-up stays",
+   "group": "motion",
+   "value": 3.2,
+   "unit": "s",
+   "source": "timer 4 (3200 ms) in sub_14000311f"
+  },
+  {
+   "name": "indicators default",
+   "group": "behaviour",
+   "value": true,
+   "source": "settings defaults table 0x1400e1320"
+  },
+  {
+   "name": "mascot blink every",
+   "group": "motion",
+   "value": 4.2,
+   "unit": "s",
+   "estimated": true
+  },
+  {
+   "name": "network change settles",
+   "group": "behaviour",
+   "value": 1.5,
+   "unit": "s",
+   "source": "timer 16 (1500 ms) in sub_14000311f"
+  },
+  {
+   "name": "low battery below",
+   "group": "popups",
+   "value": 21,
+   "unit": "%",
+   "source": "function 0x140056c76"
+  },
+  {
+   "name": "critical battery below",
+   "group": "popups",
+   "value": 11,
+   "unit": "%",
+   "source": "function 0x140056c76"
+  },
+  {
+   "name": "battery pop-up stays",
+   "group": "popups",
+   "value": 4.5,
+   "unit": "s",
+   "source": "timer 4 (4500 ms) in 0x14007f665"
+  },
+  {
+   "name": "prayer pop-up stays",
+   "group": "prayer",
+   "value": 10.0,
+   "unit": "s",
+   "source": "timer 4 (10000 ms) in 0x140002345"
+  },
+  {
+   "name": "early prayer pop-up stays",
+   "group": "prayer",
+   "value": 6.0,
+   "unit": "s",
+   "source": "timer 4 (6000 ms) in 0x140002345"
+  },
+  {
+   "name": "prayer reminder window starts",
+   "group": "prayer",
+   "value": -0.05,
+   "unit": "min",
+   "source": "0x1400da9c4 in 0x140002345"
+  },
+  {
+   "name": "prayer reminder window ends",
+   "group": "prayer",
+   "value": 2.0,
+   "unit": "min",
+   "source": "0x1400da9bc in 0x140002345"
+  },
+  {
+   "name": "focus pop-up waits for a click",
+   "group": "pomodoro",
+   "value": true,
+   "source": "function 0x14000143f"
+  }
+ ]
+}
