@@ -1,6 +1,7 @@
 # Build output
 /app/target/
 target/
+dist/
 
 # Private: agent transcripts, tool state, spend
 /agent-session.jsonl
