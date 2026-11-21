@@ -74,6 +74,8 @@ const NET_POPUP_SECS: f32 = 3.2;
 const BT_POPUP_SECS: f32 = 3.2;
 const NOTICE_POPUP_SECS: f32 = 4.5; // a short notification; longer ones get more (notice_secs)
 const NOTICE_MAX_SECS: f32 = 8.0;
+const NOTICE_POP_SECS: f32 = 0.45; // the icon's pop on arrival
+const NOTICE_SWEEP_SECS: f32 = 0.9; // the light running along the bottom on arrival
 const NOTICE_AFTER_HOVER_SECS: f32 = 1.0; // after the pointer leaves a notification it may close
 const HUD: Vec2 = vec2(346.0, 64.0); // state 4 of 0x140056ff1 is 310 x 60 plus the pill's drawn extra
 
@@ -1011,6 +1013,7 @@ impl App {
     fn draw_popup(&mut self, ui: &mut egui::Ui, r: Rect) {
         let Some(a) = &self.alert else { return };
         let (title, body) = (a.title.clone(), a.body.clone());
+        let since = a.at.elapsed().as_secs_f32();
         let p = ui.painter().clone();
         let icon = pos2(r.left() + 46.0, r.center().y);
         let tx = r.left() + 84.0;
@@ -1133,14 +1136,23 @@ impl App {
                 let (app, id) = (app.clone(), id.clone());
                 let y = r.center().y;
                 let dot = pos2(r.left() + 30.0, y);
+                // On arrival the icon pops in, and a cyan-to-violet light runs once along the bottom.
+                let s = pop_in(since);
                 if let Some(tex) = self.logo_texture(ui.ctx(), &id) {
                     // On a dark plate, so logos drawn for light backgrounds still show.
-                    p.rect_filled(Rect::from_center_size(dot, vec2(26.0, 26.0)), 7.0, Color32::from_gray(38));
-                    egui::Image::new(&tex).corner_radius(5).paint_at(ui, Rect::from_center_size(dot, vec2(20.0, 20.0)));
+                    p.rect_filled(Rect::from_center_size(dot, vec2(26.0, 26.0) * s), 7.0 * s, Color32::from_gray(38));
+                    egui::Image::new(&tex).corner_radius(5).paint_at(ui, Rect::from_center_size(dot, vec2(20.0, 20.0) * s));
                 } else {
-                    p.circle_filled(dot, 12.0, app_color(&app));
+                    p.circle_filled(dot, 12.0 * s, app_color(&app));
                     let initial: String = app.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
-                    p.text(dot, Align2::CENTER_CENTER, initial, bold(13.0), WHITE);
+                    p.text(dot, Align2::CENTER_CENTER, initial, bold(13.0 * s), WHITE);
+                }
+                let u = since / NOTICE_SWEEP_SECS;
+                if u < 1.0 {
+                    let fade = (1.0 - u) * (u * 6.0).min(1.0);
+                    let col = lerp_color(Color32::from_rgb(34, 211, 238), Color32::from_rgb(110, 50, 200), u).gamma_multiply(fade);
+                    let cx = r.left() + 30.0 + (r.width() - 60.0) * u;
+                    p.line_segment([pos2(cx - 50.0, r.bottom() - 2.5), pos2(cx + 50.0, r.bottom() - 2.5)], Stroke::new(2.5_f32, col));
                 }
                 // Line 1: who sent it, with the app's name dim on the right (a group's name alone
                 // doesn't say which app). Line 2, when there is one: what they said, full width.
@@ -2913,6 +2925,14 @@ fn moon_icon(p: &egui::Painter, c: Pos2, r: f32) {
     p.circle_filled(c + vec2(r * 0.45, -r * 0.3), r * 0.9, BG);
 }
 
+/// A notification icon's size as it arrives: from half size to a little over, then settling at 1
+/// over NOTICE_POP_SECS (an ease-out with a small overshoot).
+fn pop_in(since: f32) -> f32 {
+    let u = (since / NOTICE_POP_SECS).clamp(0.0, 1.0) - 1.0;
+    let back = 1.0 + 2.70158 * u * u * u + 1.70158 * u * u;
+    0.5 + 0.5 * back
+}
+
 /// How long a notification shows: 4.5 s, plus a second for every 30 characters past the first
 /// 40 (about reading speed), up to 8 s.
 fn notice_secs(title: &str, body: &str) -> f32 {
@@ -3516,6 +3536,14 @@ fn set_startup(on: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn notification_icon_pops_then_settles() {
+        assert!((pop_in(0.0) - 0.5).abs() < 1e-4);
+        assert!(pop_in(NOTICE_POP_SECS * 0.7) > 1.0); // the overshoot
+        assert_eq!(pop_in(NOTICE_POP_SECS), 1.0);
+        assert_eq!(pop_in(5.0), 1.0);
+    }
+
     #[test]
     fn longer_notifications_stay_longer() {
         assert_eq!(notice_secs("Mai", "Ok"), NOTICE_POPUP_SECS);

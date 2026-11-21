@@ -275,3 +275,17 @@ of the larger "working set" is the graphics driver's shared DLLs.
 - First start: `welcomed` in settings.txt; while false, a 12 s pop-up says how to open the notch
   (hover or click, following "Open the notch on") and that right-click opens Settings.
 - `--popup welcome` and `--popup taken` show those pop-ups in a screenshot.
+
+## Notifications, reworked
+- Icon: the app's own logo (AppInfo.DisplayInfo.GetLogo, 48 px, transparent margins trimmed, read
+  once per app and kept in memory), on a dark plate; without one, the initial in a dot whose colour
+  comes from the app name (FNV-1a over 8 colours, the same every run).
+- With the message text: two lines (420 x 60): who sent it with the app's name dim on the right,
+  then the message across the full width. Without it: one line (380 x 44). Text is cut by real
+  width with "…".
+- Shows 4.5 s, plus 1 s per 30 characters past 40, up to 8 s; never closes while the pointer is on
+  it, and closes 1 s after it leaves.
+- Several in a row: the newest shows with "+N" for those it covers (all are on the Today page).
+- Arrival: the icon pops from half size with a small overshoot (0.45 s) and a cyan-to-violet light
+  runs along the bottom once (0.9 s).
+- Screenshots: `--popup notice`, `notice-long`, `notice-logo` (Windows Settings' real logo, +2).
