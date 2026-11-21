@@ -273,6 +273,7 @@ struct App {
     running: bool,
     rounds: u32,
     focus_log: BTreeMap<NaiveDate, u32>,
+    rounds_day: NaiveDate, // the day `rounds` counts for
     focus_acc: f64,
     last_tick: Instant,
     // shelf
@@ -405,7 +406,7 @@ impl App {
             w: Spring { x: start.x, v: 0.0 }, h: Spring { x: start.y, v: 0.0 }, content: Spring { x: 0.0, v: 0.0 }, spring: SPRING, last_target: start,
             tasks: load_tasks(), form: None, todo_edit: false,
             water_day, drank, in_bottle, hours, fired, water_snooze: None, water_settings: false, reset_armed: None,
-            mode: Mode::Focus, left, running: false, rounds: 0, focus_log, focus_acc: 0.0, last_tick: Instant::now(),
+            mode: Mode::Focus, left, running: false, rounds: 0, rounds_day: now.date(), focus_log, focus_acc: 0.0, last_tick: Instant::now(),
             shelf, shelf_view: ShelfView::Files, clips, clipboard, last_clip, copied: None,
             battery: battery(), prayer_fired: HashSet::new(), hidden: false, media: demo_music(media::Media::start(s.lyrics, live), !live && page == 0), lyrics_open: false, volume: media::volume_watch(), last_volume: None, last_caps: caps_lock(), last_lang: input_lang(), network: media::network_watch(), last_network: None,
             bluetooth: if live { media::bluetooth_watch() } else { Default::default() }, last_headsets: None,
@@ -505,6 +506,7 @@ impl App {
         self.running = false;
         let (title, body) = if self.mode == Mode::Focus {
             self.rounds += 1;
+            self.rounds_day = self.today();
             // Texts and order from 0x14000143f: rounds 1-3 "Focus done", the 4th "Round complete".
             if self.rounds % LONG_BREAK_EVERY == 0 {
                 self.mode = Mode::Long;
@@ -539,6 +541,13 @@ impl App {
         let today = self.today();
         let m = self.now_min();
 
+        // A new day starts the 4 rounds over, unless a part is under way.
+        if self.rounds_day != today && !self.running && self.left >= self.mode_len(self.mode) {
+            self.rounds_day = today;
+            self.rounds = 0;
+            self.mode = Mode::Focus;
+            self.left = self.mode_len(Mode::Focus);
+        }
         if self.running {
             self.left -= dt;
             if self.mode == Mode::Focus {
@@ -1453,8 +1462,16 @@ impl App {
             self.running = !self.running;
             self.last_tick = Instant::now();
         }
-        if icon_button(ui, pos2(r.left() + 450.0, r.top() + 53.0), 11.0, "reset", t("Start this part over")) {
+        // ↺ starts this part over; on a part not started yet, it starts the 4 rounds over.
+        let untouched = !self.running && full;
+        let all = untouched && (self.rounds % LONG_BREAK_EVERY != 0 || self.mode != Mode::Focus);
+        let name = if all { t("Start the 4 rounds over") } else { t("Start this part over") };
+        if icon_button(ui, pos2(r.left() + 450.0, r.top() + 53.0), 11.0, "reset", name) {
             self.running = false;
+            if all {
+                self.rounds = 0;
+                self.mode = Mode::Focus;
+            }
             self.left = self.mode_len(self.mode);
         }
         if icon_button(ui, pos2(r.left() + 478.0, r.top() + 53.0), 11.0, "skip", t("Skip to the next part")) {
