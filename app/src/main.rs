@@ -1263,9 +1263,14 @@ impl App {
         } else {
             (t("Nothing playing").to_string(), t("Play music in any app").to_string())
         };
-        let max_chars = if lyr { 18 } else { 34 };
-        p.text(pos2(tx, art.top() + 44.0), Align2::LEFT_CENTER, ellipsize(&title, max_chars), bold(18.0), WHITE);
-        p.text(pos2(tx, art.top() + 65.0), Align2::LEFT_CENTER, ellipsize(&sub, max_chars + 4), reg(14.0), DIM);
+        // Cut by width, not letters: up to the lyrics column, or short of the page arrow.
+        let room = if lyr { r.left() + 322.0 } else { r.right() - 48.0 } - tx;
+        let line = |text: &str, font: FontId, col: Color32, y: f32| {
+            let g = fit_line(&p, text, font, col, room);
+            p.galley(pos2(tx, y - g.size().y / 2.0), g, col);
+        };
+        line(&title, bold(18.0), WHITE, art.top() + 44.0);
+        line(&sub, reg(14.0), DIM, art.top() + 65.0);
 
         // Progress row: elapsed, bar, remaining.
         let row_y = r.top() + if lyr { 116.0 } else { 120.0 };
