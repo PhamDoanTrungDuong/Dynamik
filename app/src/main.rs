@@ -90,6 +90,7 @@ const RECENT_MAX: usize = 20;
 const BLINK_EVERY_MS: i64 = 4200;
 const BLINK_MS: i64 = 180;
 const LONG_BREAK_EVERY: u32 = 4;
+const SLEEP_GAP_SECS: f64 = 5.0; // a gap this long between looks while Pomodoro runs = the PC slept
 const RESET_CONFIRM_SECS: f32 = 3.0;
 const MOON: [&str; 8] = ["New Moon", "Waxing Crescent", "First Quarter", "Waxing Gibbous", "Full Moon", "Waning Gibbous", "Last Quarter", "Waning Crescent"];
 const EVENTS: [&str; 6] = ["New Year", "Ramadan", "Eid al-Fitr", "Eid al-Adha", "Independence Day", "Christmas"];
@@ -548,6 +549,12 @@ impl App {
             self.rounds = 0;
             self.mode = Mode::Focus;
             self.left = self.mode_len(Mode::Focus);
+        }
+        // While it runs the notch looks in at least every second, so a longer gap means the PC
+        // slept (or the app was stopped). That time isn't focus: pause, count none of it, and say so.
+        if self.running && dt > SLEEP_GAP_SECS {
+            self.running = false;
+            self.notify(t("Pomodoro paused"), t("The PC was asleep — press Resume to go on"), Kind::Hint);
         }
         if self.running {
             self.left -= dt;

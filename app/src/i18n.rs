@@ -339,6 +339,8 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("Ask Nusa needs a Gemini key — add one in Settings", "Hỏi Nusa cần khóa Gemini — thêm trong Cài đặt", "问 Nusa 需要 Gemini 密钥 — 请在设置中添加", "Demander à Nusa nécessite une clé Gemini — ajoutez-la dans Réglages"),
     ("Enter to ask · Tab to translate · Esc to close", "Enter để hỏi · Tab để dịch · Esc để đóng", "回车提问 · Tab 翻译 · Esc 关闭", "Entrée pour demander · Tab pour traduire · Échap pour fermer"),
     ("Go on by itself — the next break or focus starts without a click", "Tự chạy tiếp — hết giờ thì nghỉ hoặc tập trung tự bắt đầu, không cần bấm", "自动继续 — 下一段休息或专注无需点击即开始", "Enchaîner — la pause ou le focus suivant démarre sans clic"),
+    ("Pomodoro paused", "Pomodoro đã tạm dừng", "番茄钟已暂停", "Pomodoro en pause"),
+    ("The PC was asleep — press Resume to go on", "Máy vừa ngủ — bấm Tiếp tục để chạy tiếp", "电脑刚才处于睡眠 — 点击继续即可接着计时", "Le PC était en veille — appuyez sur Reprendre"),
     ("Focused today: {}", "Hôm nay đã tập trung: {}", "今天已专注：{}", "Concentré aujourd'hui : {}"),
     ("Quiet focus — notifications wait until focus ends", "Tập trung yên tĩnh — thông báo chờ đến khi hết giờ tập trung", "专注免打扰 — 通知等到专注结束再显示", "Focus au calme — les notifications attendent la fin du focus"),
     ("Start the 4 rounds over", "Bắt đầu lại từ vòng 1", "从第 1 轮重新开始", "Recommencer les 4 tours"),
