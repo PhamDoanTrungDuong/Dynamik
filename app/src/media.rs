@@ -24,6 +24,7 @@ pub struct Now {
     pub lyrics_state: LyricsState,
     pub art: Option<Logo>, // the cover, when the player gives one
     pub art_key: String,   // which song `art` belongs to
+    pub tint: Option<[u8; 3]>, // the cover's main colour, made bright enough for a dark notch
     pub app_id: String,    // the player (its logo comes from `logo`)
     pub app_name: String,  // the player's name, e.g. "Spotify"
 }
@@ -157,6 +158,7 @@ impl Media {
                         n.art = read_art(&session);
                     }
                     n.art_key = key.clone();
+                    n.tint = n.art.as_deref().and_then(|a| cover_tint(&a.2));
                     {
                         let mut s = shared.lock().unwrap();
                         let art_came = s.art.is_none() && n.art.is_some();
@@ -614,6 +616,29 @@ fn read_image(r: &impl windows::core::Interface) -> Option<image::RgbaImage> {
     Some(image::load_from_memory(&bytes).ok()?.to_rgba8())
 }
 
+/// A cover's main colour: the average of its colourful pixels (grey, near-black and near-white
+/// ones count little), lifted so its brightest part is 230. None for a grey cover.
+pub fn cover_tint(rgba: &[u8]) -> Option<[u8; 3]> {
+    let (mut sum, mut weight) = ([0.0f32; 3], 0.0f32);
+    for p in rgba.chunks_exact(4) {
+        let (r, g, b) = (p[0] as f32, p[1] as f32, p[2] as f32);
+        let (hi, lo) = (r.max(g).max(b), r.min(g).min(b));
+        if hi < 40.0 || p[3] < 128 {
+            continue;
+        }
+        let sat = (hi - lo) / hi;
+        let w = sat * sat;
+        sum = [sum[0] + r * w, sum[1] + g * w, sum[2] + b * w];
+        weight += w;
+    }
+    if weight < rgba.len() as f32 / 4.0 * 0.02 {
+        return None; // mostly grey
+    }
+    let avg = sum.map(|c| c / weight);
+    let lift = 230.0 / avg[0].max(avg[1]).max(avg[2]).max(1.0);
+    Some(avg.map(|c| (c * lift).min(255.0) as u8))
+}
+
 pub const ART_PX: u32 = 156; // the cover is drawn at 78 points; twice that stays sharp at 150-200%
 
 /// The playing song's cover, cut to a centred square. None when the player gives none.
@@ -718,6 +743,18 @@ mod player_name_tests {
         assert_eq!(super::app_name("Example.exe"), "Example");
         assert_eq!(super::app_name(r"C:\Apps\Player\Example.exe"), "Example");
         assert_eq!(super::app_name("ExamplePlayer"), "ExamplePlayer");
+    }
+
+    #[test]
+    fn cover_colour() {
+        // A dark-red cover with a grey border: the red wins, lifted to stay visible.
+        let mut px = vec![];
+        for i in 0..100 {
+            px.extend_from_slice(if i < 30 { &[128, 128, 128, 255] } else { &[120, 20, 30, 255] });
+        }
+        let t = super::cover_tint(&px).unwrap();
+        assert!(t[0] == 230 && t[1] < 60 && t[2] < 70, "{t:?}");
+        assert_eq!(super::cover_tint(&[128, 128, 128, 255].repeat(50)), None);
     }
 }
 

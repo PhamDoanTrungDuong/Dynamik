@@ -790,7 +790,7 @@ impl App {
             p.galley(pos2(dx + dw + 8.0, y - tg.size().y / 2.0), tg, WHITE);
         }
         if self.page != SHELF_PAGE || self.settings_open {
-            bars(&p, pos2(r.right() - 34.0, y), self.running);
+            bars(&p, pos2(r.right() - 34.0, y), self.running, self.music_tint());
         }
     }
 
@@ -865,6 +865,15 @@ impl App {
         let to = at as i32 + go;
         if go != 0 && (0..order.len() as i32).contains(&to) {
             self.page = order[to as usize];
+        }
+    }
+
+    /// The level bars' colour: the playing song's cover colour, else white.
+    fn music_tint(&self) -> Color32 {
+        let now = self.media.now.lock();
+        match now.as_ref().ok().filter(|n| n.playing).and_then(|n| n.tint) {
+            Some([r, g, b]) => Color32::from_rgb(r, g, b),
+            None => WHITE,
         }
     }
 
@@ -1021,7 +1030,7 @@ impl App {
             p.text(r.center(), Align2::CENTER_CENTER, self.now.format("%H:%M").to_string(), bold(18.0), WHITE);
         }
         if !self.s.minimal {
-            bars(p, pos2(r.right() - 26.0, y), self.running);
+            bars(p, pos2(r.right() - 26.0, y), self.running, self.music_tint());
         }
     }
 
@@ -1303,7 +1312,7 @@ impl App {
                 self.media.send(media::Cmd::Seek(u as f64 * dur));
             }
             let f = at.filter(|_| resp.dragged()).unwrap_or((pos / dur).clamp(0.0, 1.0) as f32);
-            p.rect_filled(Rect::from_min_size(bar.min, vec2(bar.width() * f, bar.height())), 2.0, WHITE);
+            p.rect_filled(Rect::from_min_size(bar.min, vec2(bar.width() * f, bar.height())), 2.0, now.tint.map_or(WHITE, |[r, g, b]| Color32::from_rgb(r, g, b)));
         }
         let rem = if dur > 0.0 { format!("-{}", mmss(dur - pos)) } else { "-00:00".into() };
         p.text(pos2(rem_x, row_y), Align2::RIGHT_CENTER, rem, reg(15.0), WHITE);
@@ -2762,14 +2771,14 @@ fn ring(p: &egui::Painter, c: Pos2, r: f32, w: f32, frac: f32, color: Color32) {
 }
 
 /// The original's little level bars at the right of the header.
-fn bars(p: &egui::Painter, c: Pos2, lively: bool) {
+fn bars(p: &egui::Painter, c: Pos2, lively: bool, col: Color32) {
     let t = if lively { (Utc::now().timestamp_millis() % 100_000) as f32 / 1000.0 } else { 0.0 };
     let base = [0.55, 1.0, 0.75, 1.0, 0.6];
     for (k, h) in base.iter().enumerate() {
         let wave = if lively { 0.6 + 0.4 * (t * 5.0 + k as f32 * 1.3).sin().abs() } else { 1.0 };
         let hh = 16.0 * h * wave;
         let x = c.x - 10.0 + k as f32 * 5.0;
-        p.rect_filled(Rect::from_center_size(pos2(x, c.y), vec2(2.4, hh)), 1.2, WHITE);
+        p.rect_filled(Rect::from_center_size(pos2(x, c.y), vec2(2.4, hh)), 1.2, col);
     }
 }
 
@@ -3392,6 +3401,7 @@ fn demo_music(m: media::Media, shot_music: bool) -> media::Media {
             position: 72.0,
             duration: 245.0,
             read_at: Some(Instant::now()),
+            tint: media::cover_tint(&art),
             art: Some(std::sync::Arc::new((px, px, art))),
             art_key: "demo".into(),
             app_id: "demo.player".into(),
