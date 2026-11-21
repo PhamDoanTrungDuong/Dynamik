@@ -1013,8 +1013,27 @@ impl App {
         if self.target_size() == PEEK {
             return; // the bar itself is all there is
         }
-        let p = ui.painter();
         let y = r.center().y;
+        let timer = self.running || self.left < self.mode_len(self.mode);
+        // A song playing (and no session counting down): its cover on the left, the level bars in
+        // its colour on the right, the clock between. It takes the mascot's place while it plays.
+        let now = self.media.now.lock().map(|n| n.clone()).unwrap_or_default();
+        if now.playing && !timer {
+            let c = pos2(r.left() + 24.0, y);
+            match self.art_texture(ui.ctx(), &now) {
+                Some(tex) => {
+                    egui::Image::new(&tex).corner_radius(6).paint_at(ui, Rect::from_center_size(c, vec2(22.0, 22.0)));
+                }
+                None => album_art(ui.painter(), Rect::from_center_size(c, vec2(22.0, 22.0))),
+            }
+            let p = ui.painter();
+            if self.s.show_clock {
+                p.text(r.center(), Align2::CENTER_CENTER, self.now.format("%H:%M").to_string(), bold(18.0), WHITE);
+            }
+            bars(p, pos2(r.right() - 24.0, y), false, self.music_tint());
+            return;
+        }
+        let p = ui.painter();
         if self.s.mascot && !self.running && self.left >= self.mode_len(self.mode) {
             mascot(p, r);
             return;
@@ -1023,7 +1042,6 @@ impl App {
             self.status_ring(p, pos2(r.left() + 26.0, y), 9.0);
         }
         // A session's countdown always shows; the clock only with the clock switch on.
-        let timer = self.running || self.left < self.mode_len(self.mode);
         if timer {
             p.text(r.center(), Align2::CENTER_CENTER, mmss(self.left), bold(18.0), PURPLE);
         } else if self.s.show_clock {
