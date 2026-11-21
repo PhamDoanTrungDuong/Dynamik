@@ -1256,6 +1256,22 @@ impl App {
             }
             None => album_art(&p, art),
         }
+        // The player's icon on the cover's corner, so it's clear where the music comes from.
+        if now.active() && !now.app_id.is_empty() {
+            let c = art.right_bottom() - vec2(4.0, 4.0);
+            p.circle_filled(c, 13.0, BG);
+            match self.logo_texture(ui.ctx(), &now.app_id) {
+                Some(tex) => {
+                    p.circle_filled(c, 11.0, Color32::from_gray(38));
+                    egui::Image::new(&tex).corner_radius(4).paint_at(ui, Rect::from_center_size(c, vec2(15.0, 15.0)));
+                }
+                None => {
+                    p.circle_filled(c, 11.0, app_color(&now.app_name));
+                    let initial: String = now.app_name.chars().next().map(|ch| ch.to_uppercase().collect()).unwrap_or_default();
+                    p.text(c, Align2::CENTER_CENTER, initial, bold(11.0), WHITE);
+                }
+            }
+        }
         let tx = art.right() + 22.0;
         let (title, sub) = if now.active() {
             let sub = if now.album.is_empty() { now.artist.clone() } else { format!("{} - {}", now.artist, now.album) };
@@ -3378,6 +3394,8 @@ fn demo_music(m: media::Media, shot_music: bool) -> media::Media {
             read_at: Some(Instant::now()),
             art: Some(std::sync::Arc::new((px, px, art))),
             art_key: "demo".into(),
+            app_id: "demo.player".into(),
+            app_name: "Spotify".into(),
             ..Default::default()
         };
     }

@@ -24,6 +24,24 @@ pub struct Now {
     pub lyrics_state: LyricsState,
     pub art: Option<Logo>, // the cover, when the player gives one
     pub art_key: String,   // which song `art` belongs to
+    pub app_id: String,    // the player (its logo comes from `logo`)
+    pub app_name: String,  // the player's name, e.g. "Spotify"
+}
+
+/// A player's name: what Windows calls the app, else the readable part of its id
+/// ("SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify" or "Spotify.exe" both give "Spotify").
+fn app_name(id: &str) -> String {
+    let known = windows::ApplicationModel::AppInfo::GetFromAppUserModelId(&id.into())
+        .and_then(|a| a.DisplayInfo())
+        .and_then(|d| d.DisplayName())
+        .map(|n| n.to_string())
+        .unwrap_or_default();
+    if !known.is_empty() {
+        return known;
+    }
+    let tail = id.rsplit('!').next().unwrap_or(id);
+    let tail = tail.strip_suffix(".exe").or_else(|| tail.strip_suffix(".EXE")).unwrap_or(tail);
+    tail.rsplit(['\\', '/']).next().unwrap_or(tail).to_string()
 }
 
 #[derive(Clone, Copy, Default, PartialEq)]
@@ -83,6 +101,7 @@ impl Media {
             let mut watched: Option<(String, windows::Media::Control::GlobalSystemMediaTransportControlsSession, [windows::Foundation::EventRegistrationToken; 3])> = None;
             let mut last_track = String::new();
             let mut art_tries = 0;
+            let mut player = (String::new(), String::new()); // (app id, name) of the last player seen
             let mut pending: Option<Msg> = None;
             loop {
                 let cmds: Vec<Cmd> = pending.take().into_iter().chain(rx.try_iter()).filter_map(|m| if let Msg::Cmd(c) = m { Some(c) } else { None }).collect();
@@ -116,6 +135,16 @@ impl Media {
                         };
                     }
                     let mut n = read(&session).unwrap_or_default();
+                    // Which app plays it: its name and logo, looked up once per app.
+                    n.app_id = session.SourceAppUserModelId().map(|a| a.to_string()).unwrap_or_default();
+                    if player.0 != n.app_id {
+                        player = (n.app_id.clone(), app_name(&n.app_id));
+                        let known = LOGOS.lock().unwrap().as_ref().is_some_and(|m| m.contains_key(&n.app_id));
+                        if !known && !n.app_id.is_empty() {
+                            preload_logo(&n.app_id);
+                        }
+                    }
+                    n.app_name = player.1.clone();
                     let key = format!("{}\u{1}{}", n.title, n.artist);
                     let mut fetch = None;
                     // The cover: read once per song. Some players (Spotify) send it a moment after
@@ -678,6 +707,18 @@ pub fn notification_watch() -> Arc<Mutex<Vec<Notice>>> {
         }
     });
     out
+}
+
+#[cfg(test)]
+mod player_name_tests {
+    #[test]
+    fn readable_names_from_player_ids() {
+        // Made-up ids (no installed app answers them), so only the id's own text is used.
+        assert_eq!(super::app_name("ExampleAB.ExampleMusic_abc123!Example"), "Example");
+        assert_eq!(super::app_name("Example.exe"), "Example");
+        assert_eq!(super::app_name(r"C:\Apps\Player\Example.exe"), "Example");
+        assert_eq!(super::app_name("ExamplePlayer"), "ExamplePlayer");
+    }
 }
 
 #[cfg(test)]
