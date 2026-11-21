@@ -45,6 +45,7 @@ const HINT_SECS: f32 = 12.0; // the first-start hint and "shortcut taken": long 
 const WHEEL_STEP: f32 = 30.0;
 const WHEEL_REST_SECS: f32 = 0.35; // after a turn, the rest of that flick is ignored
 const NOTICE: Vec2 = vec2(380.0, 44.0); // a notification: one calm line (the original's 320 x 36 state)
+const NOTICE_TALL: Vec2 = vec2(420.0, 60.0); // ...and with the message on a second line
 const PEEK: Vec2 = vec2(56.0, 8.0); // the original's peek state: a thin bar while nothing is going on
 const EXPANDED: Vec2 = vec2(548.0, 184.0);
 const POPUP: Vec2 = vec2(404.0, 80.0);
@@ -704,8 +705,8 @@ impl App {
             EXPANDED
         } else if self.alert.as_ref().is_some_and(|a| matches!(a.kind, Kind::Hud(..))) {
             HUD
-        } else if self.alert.as_ref().is_some_and(|a| matches!(a.kind, Kind::Notice(..))) {
-            NOTICE
+        } else if let Some(a) = self.alert.as_ref().filter(|a| matches!(a.kind, Kind::Notice(..))) {
+            if a.body.is_empty() { NOTICE } else { NOTICE_TALL }
         } else if self.alert.is_some() {
             POPUP
         } else if self.s.minimal && self.idle() {
@@ -1132,14 +1133,22 @@ impl App {
                     let initial: String = app.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
                     p.text(dot, Align2::CENTER_CENTER, initial, bold(13.0), WHITE);
                 }
+                // Line 1: who sent it, with the app's name dim on the right (a group's name alone
+                // doesn't say which app). Line 2, when there is one: what they said, full width.
                 let x = dot.x + 22.0;
-                let room = r.right() - 22.0 - x;
-                let who = p.layout_no_wrap(ellipsize(&title, 28), bold(14.0), WHITE);
-                let ww = who.size().x.min(room);
-                p.galley(pos2(x, y - who.size().y / 2.0), who, WHITE);
-                if !body.is_empty() && room - ww > 40.0 {
-                    let fits = ((room - ww - 10.0) / 6.5) as usize; // about 6.5 px a character at 13 px
-                    p.text(pos2(x + ww + 10.0, y), Align2::LEFT_CENTER, ellipsize(&body, fits.max(4)), reg(13.0), DIM);
+                let right = r.right() - 20.0;
+                let name = p.layout_no_wrap(app.clone(), reg(11.0), DIM);
+                let nw = if app.is_empty() || app == title { 0.0 } else { name.size().x + 10.0 };
+                let two = !body.is_empty();
+                let y1 = if two { y - 10.0 } else { y };
+                let who = fit_line(&p, &title, bold(14.0), WHITE, right - x - nw);
+                p.galley(pos2(x, y1 - who.size().y / 2.0), who, WHITE);
+                if nw > 0.0 {
+                    p.galley(pos2(right - name.size().x, y1 - name.size().y / 2.0), name, DIM);
+                }
+                if two {
+                    let said = fit_line(&p, &body, reg(13.0), DIM, right - x);
+                    p.galley(pos2(x, y + 10.0 - said.size().y / 2.0), said, DIM);
                 }
             }
             Kind::About | Kind::Hint => {
@@ -2885,6 +2894,14 @@ fn bolt(p: &egui::Painter, c: Pos2, s: f32, col: Color32) {
 fn moon_icon(p: &egui::Painter, c: Pos2, r: f32) {
     p.circle_filled(c, r, WHITE);
     p.circle_filled(c + vec2(r * 0.45, -r * 0.3), r * 0.9, BG);
+}
+
+/// `text` on one line no wider than `width`, ending in "…" when it is cut (cut by real width,
+/// so Vietnamese and Chinese text fill the line too).
+fn fit_line(p: &egui::Painter, text: &str, font: FontId, col: Color32, width: f32) -> std::sync::Arc<egui::Galley> {
+    let mut job = egui::text::LayoutJob::simple_singleline(text.replace('\n', " "), font, col);
+    job.wrap = egui::text::TextWrapping { max_width: width.max(10.0), max_rows: 1, break_anywhere: true, overflow_character: Some('…') };
+    p.layout_job(job)
 }
 
 /// A steady colour for an app without a logo, picked from its name, so each app keeps its own.
