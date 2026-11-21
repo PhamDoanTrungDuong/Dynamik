@@ -186,6 +186,15 @@ pub fn place_name(i: usize) -> (&'static str, &'static str) {
     }
 }
 
+/// Latitude and longitude of place `i` (`here` for "My location").
+pub fn place_coords(i: usize, here: (f64, f64)) -> (f64, f64) {
+    match i {
+        i if i < CITIES.len() => (CITIES[i].2, CITIES[i].3),
+        i if i < CITIES.len() + WORLD.len() => (WORLD[i - CITIES.len()].2, WORLD[i - CITIES.len()].3),
+        _ => here,
+    }
+}
+
 /// The method a place usually follows: Kemenag in Indonesia, the country's own elsewhere, and
 /// the Muslim World League for "My location".
 pub fn usual_method(i: usize) -> usize {

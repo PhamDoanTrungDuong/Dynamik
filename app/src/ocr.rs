@@ -134,6 +134,8 @@ unsafe fn crop(bitmap: HBITMAP, r: RECT) -> Option<(Vec<u8>, i32, i32)> {
 
 /// Windows OCR on BGRA pixels, line by line. Areas bigger than Windows OCR takes are shrunk to fit.
 fn read(pixels: &[u8], w: i32, h: i32) -> Result<String, Outcome> {
+    // WinRT needs this once on each thread that uses it; again is harmless.
+    let _ = unsafe { windows::Win32::System::WinRT::RoInitialize(windows::Win32::System::WinRT::RO_INIT_MULTITHREADED) };
     use windows::{Graphics::Imaging::{BitmapPixelFormat, SoftwareBitmap}, Media::Ocr::OcrEngine, Security::Cryptography::CryptographicBuffer};
     let engine = OcrEngine::TryCreateFromUserProfileLanguages().map_err(|_| Outcome::NoEngine)?;
     let most = OcrEngine::MaxImageDimension().unwrap_or(2600) as i32;

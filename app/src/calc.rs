@@ -12,6 +12,36 @@ pub fn eval(expr: &str) -> Option<f64> {
     (p.i == text.len() && v.is_finite()).then_some(v)
 }
 
+/// A currency question, "100usd to vnd=" or "1,5 EUR in jpy": (amount, FROM, TO) in ISO codes.
+pub fn currency(q: &str) -> Option<(f64, String, String)> {
+    let s = q.trim().trim_end_matches('=').trim().to_lowercase();
+    let (left, right) = s.split_once(" to ").or_else(|| s.split_once(" in "))?;
+    let (left, to) = (left.trim(), right.trim());
+    let letters = left.chars().rev().take_while(|c| c.is_ascii_alphabetic()).count();
+    let (num, from) = left.split_at(left.len() - letters); // letters are ASCII, so this is a char boundary
+    let code = |c: &str| c.len() == 3 && c.chars().all(|ch| ch.is_ascii_alphabetic());
+    if !code(from) || !code(to) {
+        return None;
+    }
+    Some((eval(num)?, from.to_uppercase(), to.to_uppercase()))
+}
+
+/// Money as people write it: thousands grouped, two decimals below 1000, none above.
+pub fn money(v: f64) -> String {
+    let rounded = if v.abs() >= 1000.0 { v.round() } else { (v * 100.0).round() / 100.0 };
+    let s = show(rounded);
+    let (int, frac) = s.split_once('.').unwrap_or((&s, ""));
+    let (sign, digits) = int.strip_prefix('-').map_or(("", int), |d| ("-", d));
+    let mut grouped = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            grouped.push(',');
+        }
+        grouped.push(c);
+    }
+    if frac.is_empty() { format!("{sign}{grouped}") } else { format!("{sign}{grouped}.{frac}") }
+}
+
 /// The answer as people write it: no trailing zeros, at most 10 decimals.
 pub fn show(v: f64) -> String {
     let s = format!("{:.10}", v);
@@ -124,6 +154,19 @@ mod tests {
         assert_eq!(eval("(1+2"), None);
         assert_eq!(eval("2+"), None);
         assert_eq!(eval("="), None);
+    }
+
+    #[test]
+    fn currency_questions() {
+        assert_eq!(currency("100usd to vnd="), Some((100.0, "USD".into(), "VND".into())));
+        assert_eq!(currency("1,5 EUR in jpy"), Some((1.5, "EUR".into(), "JPY".into())));
+        assert_eq!(currency("(2+3) gbp to usd ="), Some((5.0, "GBP".into(), "USD".into())));
+        assert_eq!(currency("100 dollars to vnd"), None);
+        assert_eq!(currency("12*3="), None);
+        assert_eq!(currency("go to bed"), None);
+        assert_eq!(money(2540050.4), "2,540,050");
+        assert_eq!(money(92.456), "92.46");
+        assert_eq!(money(-1234.0), "-1,234");
     }
 
     #[test]

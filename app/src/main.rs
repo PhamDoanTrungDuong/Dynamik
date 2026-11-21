@@ -4,6 +4,7 @@
 mod calc;
 mod data;
 mod ocr;
+mod online;
 mod i18n;
 mod dragout;
 mod media;
@@ -81,7 +82,8 @@ const LONG_BREAK_EVERY: u32 = 4;
 const RESET_CONFIRM_SECS: f32 = 3.0;
 const MOON: [&str; 8] = ["New Moon", "Waxing Crescent", "First Quarter", "Waxing Gibbous", "Full Moon", "Waning Gibbous", "Last Quarter", "Waning Crescent"];
 const EVENTS: [&str; 6] = ["New Year", "Ramadan", "Eid al-Fitr", "Eid al-Adha", "Independence Day", "Christmas"];
-const WIDGETS: [&str; 8] = ["This week", "Battery", "Next prayer", "Focus today", "World clock", "Moon", "Countdown", "Water"];
+const WIDGETS: [&str; 9] = ["This week", "Battery", "Next prayer", "Focus today", "World clock", "Moon", "Countdown", "Water", "Weather"];
+const WEATHER_WIDGET: usize = 8;
 // Estimated Islamic dates (official announcements can differ by a day).
 const RAMADAN: [(i32, u32, u32); 5] = [(2026, 2, 18), (2027, 2, 8), (2028, 1, 28), (2029, 1, 16), (2030, 1, 5)];
 const EID_FITR: [(i32, u32, u32); 5] = [(2026, 3, 20), (2027, 3, 10), (2028, 2, 27), (2029, 2, 14), (2030, 2, 4)];
@@ -264,6 +266,10 @@ struct App {
     bluetooth: std::sync::Arc<std::sync::Mutex<Option<Vec<media::Headset>>>>,
     last_headsets: Option<HashSet<u64>>,
     notices: std::sync::Arc<std::sync::Mutex<Vec<media::Notice>>>,
+    // Where the Weather widget looks (None while it isn't shown), what it found, and currency rates.
+    weather_place: std::sync::Arc<std::sync::Mutex<Option<(f64, f64)>>>,
+    weather: std::sync::Arc<std::sync::Mutex<Option<online::Weather>>>,
+    rates: online::SharedRates,
     last_bright: u32,
     recent: Vec<(i64, media::Notice)>,
     network_change: Option<((String, u8), Instant)>,
@@ -286,6 +292,7 @@ impl App {
         if live {
             tray::set_icon(s.app_icon);
         }
+        let weather_place = std::sync::Arc::new(std::sync::Mutex::new(None));
         // --lang N shows a screenshot in that language (in memory only).
         if let Some(l) = shot.as_ref().and(std::env::args().skip_while(|a| a != "--lang").nth(1)).and_then(|l| l.parse().ok()) {
             s.language = l;
@@ -343,7 +350,16 @@ impl App {
             shelf, shelf_view: ShelfView::Files, clips, clipboard, last_clip, copied: None,
             battery: battery(), prayer_fired: HashSet::new(), hidden: false, media: media::Media::start(s.lyrics, live), lyrics_open: false, volume: media::volume_watch(), last_volume: None, last_caps: caps_lock(), last_lang: input_lang(), network: media::network_watch(), last_network: None,
             bluetooth: if live { media::bluetooth_watch() } else { Default::default() }, last_headsets: None,
-            notices: if live && s.notifications { media::notification_watch() } else { Default::default() }, last_bright: 0, recent: if shot_demo { demo_recent() } else { Vec::new() }, network_change: None, s,
+            notices: if live && s.notifications { media::notification_watch() } else { Default::default() },
+            weather_place: weather_place.clone(),
+            // --weather SYMBOL fills a screenshot's Weather widget (no network).
+            weather: if live {
+                online::weather_watch(weather_place)
+            } else {
+                let demo = std::env::args().skip_while(|a| a != "--weather").nth(1).map(|symbol| online::Weather { temp: 28.0, symbol });
+                std::sync::Arc::new(std::sync::Mutex::new(demo))
+            },
+            rates: Default::default(), last_bright: 0, recent: if shot_demo { demo_recent() } else { Vec::new() }, network_change: None, s,
         }
     }
 
@@ -1772,6 +1788,7 @@ impl App {
                 p.text(pos2(r.left() + 14.0, r.top() + 60.0), Align2::LEFT_CENTER, big, bold(32.0), WHITE);
                 p.text(pos2(r.left() + 14.0, r.top() + 96.0), Align2::LEFT_CENTER, small, reg(12.0), DIM);
             }
+            WEATHER_WIDGET => self.weather_widget(p, r),
             _ => {
                 title(t("WATER"));
                 let c = pos2(r.left() + 50.0, r.top() + 72.0);
@@ -1781,6 +1798,35 @@ impl App {
                 p.text(pos2(r.left() + 92.0, r.top() + 84.0), Align2::LEFT_CENTER, tr("of {} L", &[&format!("{:.1}", self.s.goal as f32 / 1000.0)]), reg(12.0), DIM);
             }
         }
+    }
+
+    /// The date, the weather and a soft light in the sky's colour (MET Norway's next-hour symbol).
+    fn weather_widget(&self, p: &egui::Painter, r: Rect) {
+        let w = self.weather.lock().unwrap().clone();
+        let (sky, label) = w.as_ref().map_or((Color32::from_gray(70), ""), |w| sky(&w.symbol));
+        // The light: soft rings fading out from the top right, kept inside the card.
+        let glow = p.with_clip_rect(r.intersect(p.clip_rect()));
+        let c = r.right_top() + vec2(-30.0, 26.0);
+        for k in 0..32 {
+            let f = k as f32 / 32.0;
+            glow.circle_filled(c, 130.0 * (1.0 - f) + 6.0, sky.gamma_multiply(0.025 + 0.02 * f));
+        }
+        p.text(r.min + vec2(14.0, 15.0), Align2::LEFT_CENTER, t("WEATHER"), bold(11.0), DIM);
+        p.text(pos2(r.right() - 14.0, r.top() + 15.0), Align2::RIGHT_CENTER, i18n::date(self.now).rsplit_once(' ').map_or(String::new(), |d| d.0.to_string()), reg(11.0), DIM);
+        let place = if self.s.weather_city == prayer::here_index() { t("My location").to_string() } else { prayer::place_name(self.s.weather_city).1.to_string() };
+        match w {
+            Some(w) => {
+                weather_icon(p, pos2(r.left() + 40.0, r.top() + 66.0), &w.symbol, sky);
+                p.text(pos2(r.left() + 78.0, r.top() + 58.0), Align2::LEFT_CENTER, format!("{:.0}°", w.temp), bold(32.0), WHITE);
+                p.text(pos2(r.left() + 78.0, r.top() + 86.0), Align2::LEFT_CENTER, t(label), reg(13.0), WHITE);
+            }
+            None => {
+                let why = if self.s.weather_city == prayer::here_index() && (self.s.prayer_lat, self.s.prayer_lon) == (0.0, 0.0) { t("Find my location in Settings") } else { t("Getting the weather…") };
+                p.text(pos2(r.left() + 14.0, r.top() + 66.0), Align2::LEFT_CENTER, why, reg(13.0), DIM);
+            }
+        }
+        p.text(pos2(r.left() + 14.0, r.bottom() - 14.0), Align2::LEFT_CENTER, ellipsize(&place, 24), reg(11.0), DIM);
+        p.text(pos2(r.right() - 14.0, r.bottom() - 14.0), Align2::RIGHT_CENTER, "MET Norway", reg(9.0), FAINT);
     }
 
     /// Ask Nusa: a sum ending in "=" answers as you type; questions go to Gemini (needs a key).
@@ -1807,8 +1853,25 @@ impl App {
             self.held = false;
             return;
         }
+        // "100usd to vnd" on Enter reads as "100usd to vnd=".
+        if enter && calc::currency(&self.ask_text).is_some() && !self.ask_text.trim_end().ends_with('=') {
+            self.ask_text.push('=');
+        }
         let q = self.ask_text.trim();
-        if edit.changed() || enter {
+        if let Some((amount, from, to)) = calc::currency(q).filter(|_| q.ends_with('=')) {
+            // Asked again each frame, so the answer appears as soon as the rates arrive.
+            self.ask_answer = match online::convert(&self.rates, amount, &from, &to) {
+                Some(v) => format!("= {} {to}", calc::money(v)),
+                None => match online::rates_state(&self.rates) {
+                    online::RatesState::Coming => t("Getting today's rates…").to_string(),
+                    online::RatesState::Offline => t("Rates need the internet — try again in a minute").to_string(),
+                    online::RatesState::Here => tr("Unknown currency code: {} or {}", &[&from, &to]),
+                },
+            };
+            if enter {
+                edit.request_focus();
+            }
+        } else if edit.changed() || enter {
             self.ask_answer = match calc::eval(q) {
                 // A sum answers once it ends with "=", or on Enter.
                 Some(v) if q.ends_with('=') || enter => format!("= {}", calc::show(v)),
@@ -1968,6 +2031,13 @@ impl App {
                 card(ui, "Widgets", |ui| {
                     combo(ui, "Left widget", &mut s.widget_left, &WIDGETS);
                     combo(ui, "Right widget", &mut s.widget_right, &WIDGETS);
+                    if s.widget_left == WEATHER_WIDGET || s.widget_right == WEATHER_WIDGET {
+                        let names: Vec<String> = (0..prayer::place_count())
+                            .map(|i| if i == prayer::here_index() { t("My location").into() } else { let (r, c) = prayer::place_name(i); format!("{c} — {r}") })
+                            .collect();
+                        let refs: Vec<&str> = names.iter().map(|n| n.as_str()).collect();
+                        combo(ui, "Weather for", &mut s.weather_city, &refs);
+                    }
                     let cities: Vec<&str> = WORLD.iter().map(|w| w.0).collect();
                     combo(ui, "World clock, first city", &mut s.widget_city1, &cities);
                     combo(ui, "World clock, second city", &mut s.widget_city2, &cities);
@@ -2030,6 +2100,11 @@ impl eframe::App for App {
             self.expanded = false;
             ocr::start(self.ocr.clone());
         }
+        // The weather is fetched only while a Weather widget is chosen, for its place.
+        let shown = self.s.widget_left == WEATHER_WIDGET || self.s.widget_right == WEATHER_WIDGET;
+        let here = (self.s.prayer_lat, self.s.prayer_lon);
+        let unfixed = self.s.weather_city == prayer::here_index() && here == (0.0, 0.0);
+        *self.weather_place.lock().unwrap() = (shown && !unfixed).then(|| prayer::place_coords(self.s.weather_city, here));
         // A location found for "My location" is kept even if Settings was closed meanwhile.
         let found = *self.locating.lock().unwrap();
         if let Locating::Got(lat, lon) = found {
@@ -2289,6 +2364,65 @@ fn notch_shape(p: &egui::Painter, body: Rect, rad: f32, ear: f32) {
         }
     }
     p.add(Shape::mesh(mesh));
+}
+
+/// The sky's colour and a short label for a MET Norway symbol ("rainshowers_day", "clearsky_night"…).
+fn sky(symbol: &str) -> (Color32, &'static str) {
+    let night = symbol.ends_with("_night") || symbol.ends_with("_polartwilight");
+    let kind = symbol.split('_').next().unwrap_or("");
+    match kind {
+        _ if kind.contains("thunder") => (Color32::from_rgb(98, 72, 160), "Thunder"),
+        _ if kind.contains("snow") => (Color32::from_rgb(170, 196, 224), "Snow"),
+        _ if kind.contains("sleet") => (Color32::from_rgb(120, 150, 180), "Sleet"),
+        _ if kind.contains("rain") => (Color32::from_rgb(70, 110, 160), if kind.contains("showers") { "Showers" } else { "Rain" }),
+        "fog" => (Color32::from_gray(140), "Fog"),
+        "cloudy" => (Color32::from_rgb(120, 132, 150), "Cloudy"),
+        "partlycloudy" | "fair" if night => (Color32::from_rgb(60, 70, 140), if kind == "fair" { "Fair" } else { "Partly cloudy" }),
+        "partlycloudy" => (Color32::from_rgb(90, 160, 230), "Partly cloudy"),
+        "fair" => (Color32::from_rgb(70, 165, 255), "Fair"),
+        _ if night => (Color32::from_rgb(52, 58, 130), "Clear sky"),
+        _ => (Color32::from_rgb(56, 170, 255), "Clear sky"),
+    }
+}
+
+/// A small sun, moon, cloud, rain, snow or lightning picture for the symbol.
+fn weather_icon(p: &egui::Painter, c: Pos2, symbol: &str, sky: Color32) {
+    let night = symbol.ends_with("_night") || symbol.ends_with("_polartwilight");
+    let clear = symbol.starts_with("clearsky") || symbol.starts_with("fair") || symbol.starts_with("partlycloudy");
+    if clear {
+        let sun = c + vec2(-4.0, -5.0);
+        if night {
+            p.circle_filled(sun, 11.0, Color32::from_rgb(235, 235, 210));
+            p.circle_filled(sun + vec2(5.0, -4.0), 9.5, lerp_color(CARD, sky, 0.35)); // a crescent
+        } else {
+            p.circle_filled(sun, 10.0, Color32::from_rgb(255, 205, 64));
+            for k in 0..8 {
+                let a = k as f32 * PI / 4.0;
+                let d = vec2(a.cos(), a.sin());
+                p.line_segment([sun + d * 13.0, sun + d * 17.0], Stroke::new(2.0_f32, Color32::from_rgb(255, 205, 64)));
+            }
+        }
+    }
+    if !symbol.starts_with("clearsky") {
+        let cloud = Color32::from_gray(if symbol.contains("rain") || symbol.contains("thunder") { 185 } else { 225 });
+        let base = c + vec2(4.0, 6.0);
+        p.circle_filled(base + vec2(-9.0, 2.0), 7.0, cloud);
+        p.circle_filled(base + vec2(0.0, -3.0), 9.0, cloud);
+        p.circle_filled(base + vec2(9.0, 2.0), 7.0, cloud);
+        p.rect_filled(Rect::from_min_max(base + vec2(-9.0, 2.0), base + vec2(9.0, 9.0)), 0.0, cloud);
+        let below = base + vec2(0.0, 14.0);
+        if symbol.contains("thunder") {
+            p.add(Shape::line(vec![below + vec2(2.0, -2.0), below + vec2(-3.0, 4.0), below + vec2(2.0, 4.0), below + vec2(-2.0, 10.0)], Stroke::new(2.0_f32, Color32::from_rgb(255, 214, 80))));
+        } else if symbol.contains("snow") || symbol.contains("sleet") {
+            for dx in [-7.0, 0.0, 7.0] {
+                p.circle_filled(below + vec2(dx, 2.0), 2.0, WHITE);
+            }
+        } else if symbol.contains("rain") {
+            for dx in [-7.0, 0.0, 7.0] {
+                p.line_segment([below + vec2(dx, -1.0), below + vec2(dx - 2.0, 5.0)], Stroke::new(2.0_f32, Color32::from_rgb(120, 180, 255)));
+            }
+        }
+    }
 }
 
 fn ring(p: &egui::Painter, c: Pos2, r: f32, w: f32, frac: f32, color: Color32) {

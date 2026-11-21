@@ -235,3 +235,15 @@ of the larger "working set" is the graphics driver's shared DLLs.
   the text is copied. One read at a time. Nothing is written to disk.
 - Tray menu as the original: Start with Windows, Mascot, Minimal notch (ticked), About, Exit; a left
   click opens the notch.
+
+## Nusa 1.3.1 features, part B (network, free, no key)
+- Weather widget (widget 8, `weather_city` from the prayer City list): MET Norway's locationforecast
+  compact, fetched only while a Weather widget is chosen, every 30 minutes or at once when the place
+  changes (a failure is retried after a minute). Coordinates are rounded to 2 decimals (~1 km).
+  Shows the date, temperature, the next hour's sky and a soft light in the sky's colour.
+  MET requires an identifying User-Agent; it is added unvalidated because WinRT's typed parser
+  turns some valid names down (MET then answers 403).
+- Currency in the Ask box: "100usd to vnd=" or "1,5 eur in jpy=" (Enter adds the "="). Rates
+  against USD from open.er-api.com, fetched on first use and kept 12 hours; offline is said so.
+- Every thread that uses WinRT (weather, rates, location, OCR) calls RoInitialize first.
+- `--weather SYMBOL` fills a screenshot's Weather widget without the network.

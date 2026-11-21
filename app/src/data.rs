@@ -69,6 +69,7 @@ pub struct Settings {
     pub prayer: bool,
     pub prayer_city: usize, // index into prayer's City list (Indonesia, world, then My location)
     pub prayer_method: usize, // 0: the place's usual method, else index + 1 into prayer::METHODS
+    pub weather_city: usize, // the Weather widget's place, from the same City list
     pub prayer_lat: f64, // My location, from Windows when asked
     pub prayer_lon: f64,
     pub prayer_reminder: bool,
@@ -153,6 +154,7 @@ impl Settings {
             prayer: get(&m, "prayer", false),
             prayer_city: get(&m, "prayer_city", crate::prayer::DEFAULT_CITY).min(crate::prayer::place_count() - 1),
             prayer_method: get(&m, "prayer_method", 0usize).min(crate::prayer::METHODS.len()),
+            weather_city: get(&m, "weather_city", get(&m, "prayer_city", crate::prayer::DEFAULT_CITY)).min(crate::prayer::place_count() - 1),
             prayer_lat: get(&m, "prayer_lat", 0.0f64).clamp(-90.0, 90.0),
             prayer_lon: get(&m, "prayer_lon", 0.0f64).clamp(-180.0, 180.0),
             prayer_reminder: get(&m, "prayer_reminder", true),
@@ -213,6 +215,7 @@ impl Settings {
             format!("prayer={}", s.prayer),
             format!("prayer_city={}", s.prayer_city),
             format!("prayer_method={}", s.prayer_method),
+            format!("weather_city={}", s.weather_city),
             format!("prayer_lat={}", s.prayer_lat),
             format!("prayer_lon={}", s.prayer_lon),
             format!("prayer_reminder={}", s.prayer_reminder),

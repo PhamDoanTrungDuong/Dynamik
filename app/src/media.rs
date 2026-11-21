@@ -328,7 +328,7 @@ pub fn best_synced(body: &str, duration: f64) -> Option<String> {
         .map(|(_, l)| l)
 }
 
-fn json_number(body: &str, key: &str) -> Option<f64> {
+pub fn json_number(body: &str, key: &str) -> Option<f64> {
     let start = body.find(&format!("\"{key}\""))?;
     let rest = body[start + key.len() + 2..].trim_start().strip_prefix(':')?.trim_start();
     let end = rest.find(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-')).unwrap_or(rest.len());
@@ -517,6 +517,8 @@ fn bth_address(id: &str) -> Option<u64> {
 /// Where this PC is, from Windows' location service; None when location is off or denied.
 /// Blocks for a few seconds, so call it from its own thread.
 pub fn locate() -> Option<(f64, f64)> {
+    // WinRT needs this once on each thread that uses it; again is harmless.
+    let _ = unsafe { windows::Win32::System::WinRT::RoInitialize(windows::Win32::System::WinRT::RO_INIT_MULTITHREADED) };
     use windows::Devices::Geolocation::{GeolocationAccessStatus, Geolocator};
     let access = Geolocator::RequestAccessAsync().ok()?.get().ok()?;
     if access != GeolocationAccessStatus::Allowed {
