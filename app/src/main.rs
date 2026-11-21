@@ -1287,6 +1287,16 @@ impl App {
         if now.active() && !now.app_id.is_empty() {
             let c = art.right_bottom() - vec2(4.0, 4.0);
             p.circle_filled(c, 13.0, BG);
+            // With several players open (Spotify and a browser, say), the icon switches between them.
+            if now.players > 1 {
+                let name = tr("Switch player ({} open)", &[&now.players]);
+                let resp = ui.interact(Rect::from_center_size(c, vec2(26.0, 26.0)), ui.id().with("player"), Sense::click()).on_hover_text(&name);
+                resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &name));
+                p.circle_stroke(c, 12.5, Stroke::new(1.5_f32, if resp.hovered() { WHITE } else { DIM }));
+                if resp.clicked() {
+                    self.media.send(media::Cmd::NextPlayer);
+                }
+            }
             match self.logo_texture(ui.ctx(), &now.app_id) {
                 Some(tex) => {
                     p.circle_filled(c, 11.0, Color32::from_gray(38));
@@ -3424,6 +3434,7 @@ fn demo_music(m: media::Media, shot_music: bool) -> media::Media {
             art_key: "demo".into(),
             app_id: "demo.player".into(),
             app_name: "Spotify".into(),
+            players: 2,
             ..Default::default()
         };
     }

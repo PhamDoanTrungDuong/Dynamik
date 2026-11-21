@@ -27,6 +27,7 @@ pub struct Now {
     pub tint: Option<[u8; 3]>, // the cover's main colour, made bright enough for a dark notch
     pub app_id: String,    // the player (its logo comes from `logo`)
     pub app_name: String,  // the player's name, e.g. "Spotify"
+    pub players: usize,    // how many players Windows knows now (more than one: they can be switched)
 }
 
 /// A player's name: what Windows calls the app, else the readable part of its id
@@ -64,7 +65,7 @@ impl Now {
     }
 }
 
-pub enum Cmd { Toggle, Next, Prev, Pause, Seek(f64) }
+pub enum Cmd { Toggle, Next, Prev, Pause, Seek(f64), NextPlayer }
 
 const ART_TRIES: u32 = 4; // more reads of a song's cover while the player hasn't sent it yet
 
@@ -99,6 +100,14 @@ impl Media {
                 let _ = e.send(Msg::Changed);
                 Ok(())
             }));
+            let e = events.clone();
+            let _ = manager.SessionsChanged(&TypedEventHandler::new(move |_, _| {
+                let _ = e.send(Msg::Changed);
+                Ok(())
+            }));
+            // The player picked with "switch player", until it goes away (or stays paused while
+            // another one plays); None follows Windows' own choice.
+            let mut chosen: Option<String> = None;
             let mut watched: Option<(String, windows::Media::Control::GlobalSystemMediaTransportControlsSession, [windows::Foundation::EventRegistrationToken; 3])> = None;
             let mut last_track = String::new();
             let mut art_tries = 0;
@@ -106,7 +115,25 @@ impl Media {
             let mut pending: Option<Msg> = None;
             loop {
                 let cmds: Vec<Cmd> = pending.take().into_iter().chain(rx.try_iter()).filter_map(|m| if let Msg::Cmd(c) = m { Some(c) } else { None }).collect();
-                let current = manager.GetCurrentSession().ok();
+                let sessions: Vec<_> = manager.GetSessions().map(|l| l.into_iter().collect()).unwrap_or_default();
+                let id_of = |s: &windows::Media::Control::GlobalSystemMediaTransportControlsSession| s.SourceAppUserModelId().map(|a| a.to_string()).unwrap_or_default();
+                let playing = |s: &windows::Media::Control::GlobalSystemMediaTransportControlsSession| {
+                    s.GetPlaybackInfo().and_then(|i| i.PlaybackStatus()).is_ok_and(|st| st == Status::Playing)
+                };
+                let windows_pick = manager.GetCurrentSession().ok();
+                let mut current = chosen.as_ref().and_then(|c| sessions.iter().find(|s| id_of(s) == *c).cloned());
+                // Drop the pick when it's gone, or paused while Windows' pick plays something else.
+                if current.is_none() || current.as_ref().is_some_and(|c| !playing(c) && windows_pick.as_ref().is_some_and(|w| id_of(w) != id_of(c) && playing(w))) {
+                    chosen = None;
+                    current = windows_pick;
+                }
+                if cmds.iter().any(|c| matches!(c, Cmd::NextPlayer)) && sessions.len() > 1 {
+                    // The next player after the one shown, in Windows' order.
+                    let at = current.as_ref().and_then(|c| sessions.iter().position(|s| id_of(s) == id_of(c))).unwrap_or(0);
+                    let next = sessions[(at + 1) % sessions.len()].clone();
+                    chosen = Some(id_of(&next));
+                    current = Some(next);
+                }
                 let app = current.as_ref().and_then(|s| s.SourceAppUserModelId().ok()).map(|a| a.to_string());
                 if app != watched.as_ref().map(|w| w.0.clone()) {
                     if let Some((_, old, [a, b, c])) = watched.take() {
@@ -133,6 +160,7 @@ impl Media {
                             Cmd::Pause => session.TryPauseAsync().and_then(|o| o.get()),
                             // The position is in 100 ns ticks.
                             Cmd::Seek(s) => session.TryChangePlaybackPositionAsync((s * 1e7) as i64).and_then(|o| o.get()),
+                            Cmd::NextPlayer => Ok(true), // done above, before choosing the session
                         };
                     }
                     let mut n = read(&session).unwrap_or_default();
@@ -146,6 +174,7 @@ impl Media {
                         }
                     }
                     n.app_name = player.1.clone();
+                    n.players = sessions.len();
                     let key = format!("{}\u{1}{}", n.title, n.artist);
                     let mut fetch = None;
                     // The cover: read once per song. Some players (Spotify) send it a moment after
