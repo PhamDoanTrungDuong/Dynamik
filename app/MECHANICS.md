@@ -265,3 +265,13 @@ of the larger "working set" is the graphics driver's shared DLLs.
   first in To-do (read only) and remind at their start, following "When a task starts".
 - `--ask --demo` and `--page 4 --demo` fill screenshots with a made-up answer and events.
 - Live checks: `cargo test live -- --ignored` (MET, rates, Google holidays iCal, Gemini bad key).
+
+## Getting around (after part C)
+- Page turns: the wheel or a touchpad swipe (down or left = next) and the ← → keys while nothing is
+  being typed. Read unsmoothed; 30 points (under one notch, which egui counts as 40) turn one page,
+  and the rest of that flick is ignored for 0.35 s. Over the To-do list only sideways scroll turns.
+- Shortcuts: RegisterHotKey's result is kept (tray::hotkeys_taken); a taken Ctrl+Alt+Space or
+  Ctrl+Alt+T is said once in a 12 s pop-up, and Settings › General shows Ready or which is taken.
+- First start: `welcomed` in settings.txt; while false, a 12 s pop-up says how to open the notch
+  (hover or click, following "Open the notch on") and that right-click opens Settings.
+- `--popup welcome` and `--popup taken` show those pop-ups in a screenshot.

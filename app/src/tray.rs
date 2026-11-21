@@ -44,6 +44,17 @@ const HOTKEY_ASK: i32 = 1;
 const HOTKEY_OCR: i32 = 2;
 const WM_TRAY: u32 = WM_APP + 1;
 static PENDING: AtomicU8 = AtomicU8::new(0);
+// Which shortcuts another app already owns: TAKEN_ASK | TAKEN_OCR, or NOT_YET before registering.
+pub const TAKEN_ASK: u8 = 1;
+pub const TAKEN_OCR: u8 = 2;
+const NOT_YET: u8 = u8::MAX;
+static TAKEN: AtomicU8 = AtomicU8::new(NOT_YET);
+
+/// The shortcuts that couldn't be registered, once registering has been tried.
+pub fn hotkeys_taken() -> Option<u8> {
+    let t = TAKEN.load(Ordering::Relaxed);
+    (t != NOT_YET).then_some(t)
+}
 static CTX: OnceLock<egui::Context> = OnceLock::new();
 // GUID_DEVICE_POWER_POLICY_VIDEO_BRIGHTNESS, the GUID the original registers for.
 const BRIGHTNESS: GUID = GUID::from_u128(0xaded5e82_b909_4619_9949_f5d71dac0bcb);
@@ -145,9 +156,11 @@ pub fn start(ctx: &egui::Context) {
         RegisterPowerSettingNotification(hwnd, &BATTERY_LEVEL, DEVICE_NOTIFY_WINDOW_HANDLE);
         HWND_.store(hwnd, Ordering::Relaxed);
         AddClipboardFormatListener(hwnd);
-        // Fails quietly when another app already owns the keys; the notch still opens by hover.
-        RegisterHotKey(hwnd, HOTKEY_ASK, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_SPACE as u32);
-        RegisterHotKey(hwnd, HOTKEY_OCR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, u32::from(b'T'));
+        // Fails when another app already owns the keys; the notch says so (and still opens by hover).
+        let ask = RegisterHotKey(hwnd, HOTKEY_ASK, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_SPACE as u32) != 0;
+        let ocr = RegisterHotKey(hwnd, HOTKEY_OCR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, u32::from(b'T')) != 0;
+        TAKEN.store(if ask { 0 } else { TAKEN_ASK } | if ocr { 0 } else { TAKEN_OCR }, Ordering::Relaxed);
+        wake();
         let flags = WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS;
         SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, null_mut(), Some(win_event), 0, 0, flags);
         SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE, null_mut(), Some(win_event), 0, 0, flags);

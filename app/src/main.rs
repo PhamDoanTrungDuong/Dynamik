@@ -39,6 +39,11 @@ const ORANGE: Color32 = Color32::from_rgb(245, 158, 11);
 const COLLAPSED: Vec2 = vec2(196.0, 38.0);
 const MINIMAL: Vec2 = vec2(150.0, 32.0);
 const ABOUT_SECS: f32 = 5.0;
+const HINT_SECS: f32 = 12.0; // the first-start hint and "shortcut taken": long enough to read
+// Scroll (points) that turns one page: under one wheel notch (egui counts a notch as 40),
+// read unsmoothed so a notch arrives whole; touchpad swipes add up to it.
+const WHEEL_STEP: f32 = 30.0;
+const WHEEL_REST_SECS: f32 = 0.35; // after a turn, the rest of that flick is ignored
 const NOTICE: Vec2 = vec2(380.0, 44.0); // a notification: one calm line (the original's 320 x 36 state)
 const PEEK: Vec2 = vec2(56.0, 8.0); // the original's peek state: a thin bar while nothing is going on
 const EXPANDED: Vec2 = vec2(548.0, 184.0);
@@ -175,7 +180,7 @@ enum HudKind { Volume, Muted, Brightness, Caps, Lang }
 /// Asking Windows where this PC is, for "My location".
 #[derive(Clone, Copy, PartialEq)]
 enum Locating { Idle, Busy, Failed, Got(f64, f64) }
-enum Kind { Drink, Refill, TaskStart(usize), TaskEnd(usize), Event(u32), Prayer(u32, bool), Battery(u8, bool), Hud(HudKind, f32), Network(u8), Bluetooth(Option<u8>), Notice(String, String), Info, About }
+enum Kind { Drink, Refill, TaskStart(usize), TaskEnd(usize), Event(u32), Hint, Prayer(u32, bool), Battery(u8, bool), Hud(HudKind, f32), Network(u8), Bluetooth(Option<u8>), Notice(String, String), Info, About }
 struct Alert { title: String, body: String, kind: Kind, at: Instant }
 
 /// A critically-tuned spring for one value.
@@ -220,6 +225,14 @@ struct App {
     ical_url: std::sync::Arc<std::sync::Mutex<String>>,
     calendar: std::sync::Arc<std::sync::Mutex<calendar::Today>>,
     cal_fired: HashSet<(NaiveDate, u32, String)>,
+    // Shortcuts: whether a taken one still has to be told. Page turning by scroll: the scroll
+    // gathered so far, when it last moved, and until when a flick is ignored after a turn;
+    // `scroll_zone` is a list on the page that scrolls itself (no page turns over it).
+    hotkeys_told: bool,
+    wheel_acc: f32,
+    wheel_last: Instant,
+    wheel_rest: Instant,
+    scroll_zone: Option<Rect>,
     locating: std::sync::Arc<std::sync::Mutex<Locating>>,
     ocr: std::sync::Arc<std::sync::Mutex<Option<ocr::Outcome>>>,
     expanded: bool,
@@ -349,6 +362,12 @@ impl App {
         let last_clip = clipboard.as_mut().and_then(|c| c.get_text().ok()).unwrap_or_default();
         let left = s.focus as f64 * 60.0;
         let start = if shot.is_some() && !resting { EXPANDED } else { COLLAPSED };
+        // The very first start says how to open the notch, once.
+        let welcome = live && !s.welcomed;
+        if welcome {
+            s.welcomed = true;
+            s.save();
+        }
         // Screenshots never read the secrets.
         let secret = |name: &str| if live { read_secret(name) } else { String::new() };
         let ical_text = secret(ICAL_FILE);
@@ -365,6 +384,7 @@ impl App {
                 std::sync::Arc::new(std::sync::Mutex::new(calendar::Today { status: calendar::Status::Ready, events }))
             },
             ical_text, ical_url, cal_fired: HashSet::new(),
+            hotkeys_told: !live, wheel_acc: 0.0, wheel_last: Instant::now(), wheel_rest: Instant::now(), scroll_zone: None,
             now, page: page.min(PAGES.len() - 1), page_anim: page.min(PAGES.len() - 1) as f32, settings_open: shot.is_some() && std::env::args().any(|a| a == "--settings"),
             ask_open: shot.is_some() && std::env::args().any(|a| a == "--ask"),
             // --ask --demo shows a made-up long answer, to check how it wraps.
@@ -374,7 +394,7 @@ impl App {
             locating: std::sync::Arc::new(std::sync::Mutex::new(Locating::Idle)),
             ocr: Default::default(),
             expanded: shot.is_some() && !resting, held: false, resting, last_inside: Instant::now(), applied: None,
-            alert: if shot.is_some() { demo_alert() } else { None }, shot, frames: 0,
+            alert: if shot.is_some() { demo_alert() } else if welcome { Some(welcome_hint(s.open_click)) } else { None }, shot, frames: 0,
             w: Spring { x: start.x, v: 0.0 }, h: Spring { x: start.y, v: 0.0 }, content: Spring { x: 0.0, v: 0.0 }, spring: SPRING, last_target: start,
             tasks: load_tasks(), form: None, todo_edit: false,
             water_day, drank, in_bottle, hours, fired, water_snooze: None, water_settings: false, reset_armed: None,
@@ -665,6 +685,7 @@ impl App {
             Kind::Bluetooth(_) => a.at.elapsed().as_secs_f32() > BT_POPUP_SECS,
             Kind::Notice(..) => a.at.elapsed().as_secs_f32() > NOTICE_POPUP_SECS,
             Kind::About => a.at.elapsed().as_secs_f32() > ABOUT_SECS,
+            Kind::Hint => a.at.elapsed().as_secs_f32() > HINT_SECS,
             Kind::Prayer(_, early) => a.at.elapsed().as_secs_f32() > if early { PRAYER_EARLY_SECS } else { PRAYER_POPUP_SECS },
             Kind::Event(_) => a.at.elapsed().as_secs_f32() > PRAYER_POPUP_SECS,
             _ => false,
@@ -801,6 +822,41 @@ impl App {
         }
         if at + 1 < order.len() && circle_button(ui, pos2(r.right() - 26.0, y), 13.0, ARROW, "right") {
             self.page = order[at + 1];
+        }
+    }
+
+    /// The mouse wheel or a touchpad swipe turns pages (down or left = next), and so do the ← →
+    /// keys while nothing is being typed. Over a list that scrolls itself, only sideways scroll turns.
+    fn turn_by_scroll_and_keys(&mut self, ui: &mut egui::Ui) {
+        let (order, at) = (self.order(), self.pos());
+        let typing = ui.ctx().memory(|m| m.focused().is_some());
+        let (left, right, d, over) = ui.input(|i| {
+            let keys = !typing && i.modifiers.is_none();
+            let over = i.pointer.hover_pos().zip(self.scroll_zone).is_some_and(|(p, z)| z.contains(p));
+            (keys && i.key_pressed(egui::Key::ArrowLeft), keys && i.key_pressed(egui::Key::ArrowRight), i.raw_scroll_delta, over)
+        });
+        let step = if over { d.x } else { d.x + d.y };
+        if step != 0.0 {
+            // A pause ends the flick; what it gathered is dropped.
+            if self.wheel_last.elapsed().as_secs_f32() > WHEEL_REST_SECS {
+                self.wheel_acc = 0.0;
+            }
+            self.wheel_last = Instant::now();
+            if self.wheel_rest > Instant::now() {
+                self.wheel_rest = Instant::now() + std::time::Duration::from_secs_f32(WHEEL_REST_SECS);
+            } else {
+                self.wheel_acc -= step;
+            }
+        }
+        let mut go = left as i32 * -1 + right as i32;
+        if self.wheel_acc.abs() >= WHEEL_STEP {
+            go = self.wheel_acc.signum() as i32;
+            self.wheel_acc = 0.0;
+            self.wheel_rest = Instant::now() + std::time::Duration::from_secs_f32(WHEEL_REST_SECS);
+        }
+        let to = at as i32 + go;
+        if go != 0 && (0..order.len() as i32).contains(&to) {
+            self.page = order[to as usize];
         }
     }
 
@@ -1065,7 +1121,7 @@ impl App {
                     p.text(pos2(x + ww + 10.0, y), Align2::LEFT_CENTER, ellipsize(&body, fits.max(4)), reg(13.0), DIM);
                 }
             }
-            Kind::About => {
+            Kind::About | Kind::Hint => {
                 // A violet dot beside the name and version (title and body are drawn above).
                 ring(&p, icon, 14.0, 4.0, 1.0, PURPLE);
             }
@@ -1579,6 +1635,7 @@ impl App {
         let mut toggle_i = None;
         let mut remove = None;
         let mut edit = None;
+        self.scroll_zone = Some(list); // the wheel scrolls this list, not the pages
         ui.allocate_new_ui(egui::UiBuilder::new().max_rect(list), |ui| {
             egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
                 // Today's calendar events come first; they are read from the calendar, so not editable here.
@@ -2033,6 +2090,16 @@ impl App {
                     if combo(ui, "Open the notch on", &mut oc, &["Hover", "Click"]) {
                         s.open_click = oc == 1;
                     }
+                    // The shortcuts, and whether another app has taken one.
+                    let taken = tray::hotkeys_taken();
+                    row(ui, "Shortcuts — Ctrl+Alt+Space asks Nusa, Ctrl+Alt+T copies text from the screen", |ui| {
+                        let (text, col) = match taken {
+                            None => (String::new(), DIM), // not registered yet
+                            Some(0) => (t("Ready").to_string(), GREEN),
+                            Some(b) => (tr("Taken: {}", &[&taken_hint(b).body]), RED),
+                        };
+                        ui.add(egui::Label::new(egui::RichText::new(text).font(reg(12.0)).color(col)).wrap());
+                    });
                     combo(ui, "Status ring", &mut s.status_ring, &["Water", "Tasks done today", "No ring"]);
                     switch_row(ui, "Reminder sounds — chimes for Pomodoro, To-do and Water", &mut s.sound);
                 });
@@ -2262,6 +2329,15 @@ impl eframe::App for App {
             Some(ocr::Outcome::NoEngine) => self.alert = Some(Alert { title: t("No text found").into(), body: t("Add an OCR language in Windows Settings › Language").into(), kind: Kind::About, at: Instant::now() }),
             _ => {}
         }
+        // A shortcut another app owns is said once, after any pop-up already up (e.g. the welcome).
+        if !self.hotkeys_told && self.alert.is_none() {
+            if let Some(bits) = tray::hotkeys_taken() {
+                self.hotkeys_told = true;
+                if bits != 0 {
+                    self.alert = Some(taken_hint(bits));
+                }
+            }
+        }
         if pick == tray::ABOUT {
             self.alert = Some(Alert { title: "My Notch".into(), body: tr("Version {}", &[&env!("CARGO_PKG_VERSION")]), kind: Kind::About, at: Instant::now() });
         }
@@ -2357,7 +2433,7 @@ impl eframe::App for App {
                     self.expanded = true;
                 }
             } else if !self.expanded && resp.clicked() {
-                if self.alert.as_ref().is_some_and(|a| matches!(a.kind, Kind::Info | Kind::Battery(..) | Kind::Prayer(..) | Kind::Event(_))) {
+                if self.alert.as_ref().is_some_and(|a| matches!(a.kind, Kind::Info | Kind::Battery(..) | Kind::Prayer(..) | Kind::Event(_) | Kind::Hint)) {
                     self.alert = None;
                 }
                 self.expanded = true;
@@ -2395,6 +2471,7 @@ impl eframe::App for App {
                     if !lyrics_view {
                         self.header(ui, r, title);
                     }
+                    self.scroll_zone = None;
                     for (k, i) in shown.into_iter().enumerate() {
                         if k == 1 && shown[0] == shown[1] {
                             break;
@@ -2417,6 +2494,7 @@ impl eframe::App for App {
                     if !lyrics_view {
                         self.arrows(ui, r);
                         self.dots(ui, r);
+                        self.turn_by_scroll_and_keys(ui);
                     }
                 } else if self.alert.is_some() {
                     self.draw_popup(ui, r);
@@ -3181,9 +3259,27 @@ fn demo_alert() -> Option<Alert> {
         "bluetooth" => ("AirBuds Pro", "Connected · 70%", Kind::Bluetooth(Some(70))),
         "notice" => ("Nusa", "Hello, Nusa 1.2!", Kind::Notice("Messages".into(), String::new())),
         "brightness" => ("Brightness", "", Kind::Hud(HudKind::Brightness, 0.6)),
+        "welcome" => return Some(welcome_hint(false)),
+        "taken" => return Some(taken_hint(tray::TAKEN_ASK | tray::TAKEN_OCR)),
         _ => return None,
     };
     Some(Alert { title: title.into(), body: body.into(), kind, at: Instant::now() })
+}
+
+/// The first start's hint: how to open the notch and reach Settings.
+fn welcome_hint(open_click: bool) -> Alert {
+    let body = if open_click { t("Click to open · right-click for Settings") } else { t("Hover to open · right-click for Settings") };
+    Alert { title: t("Welcome to My Notch").into(), body: body.into(), kind: Kind::Hint, at: Instant::now() }
+}
+
+/// Says which shortcuts another app already owns (`bits` from tray::hotkeys_taken).
+fn taken_hint(bits: u8) -> Alert {
+    let keys: Vec<&str> = [(tray::TAKEN_ASK, "Ctrl+Alt+Space"), (tray::TAKEN_OCR, "Ctrl+Alt+T")]
+        .iter()
+        .filter(|(b, _)| bits & b != 0)
+        .map(|&(_, k)| k)
+        .collect();
+    Alert { title: t("Shortcut used by another app").into(), body: keys.join(" · "), kind: Kind::Hint, at: Instant::now() }
 }
 
 fn sun_icon(p: &egui::Painter, c: Pos2, col: Color32) {

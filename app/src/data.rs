@@ -127,6 +127,7 @@ pub struct Settings {
     pub popup_battery: bool,
     pub popup_wifi: bool,
     pub hide_fullscreen: bool,
+    pub welcomed: bool, // the first-start hint has been shown
     pub lyrics: bool,
     pub hud_volume: bool,
     pub hud_caps: bool,
@@ -214,6 +215,7 @@ impl Settings {
             popup_battery: get(&m, "popup_battery", true),
             popup_wifi: get(&m, "popup_wifi", true),
             hide_fullscreen: get(&m, "hide_fullscreen", true),
+            welcomed: get(&m, "welcomed", false),
             lyrics: get(&m, "lyrics", true),
             hud_volume: get(&m, "hud_volume", true),
             hud_caps: get(&m, "hud_caps", true),
@@ -277,6 +279,7 @@ impl Settings {
             format!("popup_battery={}", s.popup_battery),
             format!("popup_wifi={}", s.popup_wifi),
             format!("hide_fullscreen={}", s.hide_fullscreen),
+            format!("welcomed={}", s.welcomed),
             format!("lyrics={}", s.lyrics),
             format!("hud_volume={}", s.hud_volume),
             format!("hud_caps={}", s.hud_caps),

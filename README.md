@@ -18,7 +18,10 @@ hiện trạng thái và mở ra thành bảng công cụ nhỏ.*
 - Khi đang Pomodoro: notch nghỉ hiện đồng hồ đếm ngược màu tím, thay chỗ mascot.
 - Mở notch: rê chuột vào, hoặc click (Settings › Open the notch on). Chuột rời đi thì notch tự thu lại,
   trừ khi đang gõ chữ.
-- Chuyển trang: mũi tên hai bên hoặc chấm trang; trang trượt ngang và mờ dần.
+- Chuyển trang: mũi tên hai bên, chấm trang, lăn chuột (hoặc vuốt touchpad), hoặc phím ← → khi không
+  gõ chữ; trang trượt ngang và mờ dần. Trên danh sách To-do, lăn chuột để cuộn danh sách.
+- Lần đầu mở app: notch chào và chỉ cách mở, cách vào Settings.
+- Phím tắt bị app khác chiếm thì notch báo một lần; trạng thái phím tắt xem ở Settings › General.
 - Settings: click phải vào notch để mở, click phải lần nữa để đóng.
 - Menu khay hệ thống: Start with Windows, Mascot, Minimal notch (có dấu tick), About, Exit. Click trái
   để mở notch.
