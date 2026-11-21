@@ -247,3 +247,21 @@ of the larger "working set" is the graphics driver's shared DLLs.
   against USD from open.er-api.com, fetched on first use and kept 12 hours; offline is said so.
 - Every thread that uses WinRT (weather, rates, location, OCR) calls RoInitialize first.
 - `--weather SYMBOL` fills a screenshot's Weather widget without the network.
+
+## Nusa 1.3.1 features, part C (the user's own key and calendar)
+- Secrets (the Gemini key in `gemini.key`, the calendar address in `calendar.key`) are sealed with
+  Windows DPAPI (CryptProtectData, this account on this PC) and never written to settings.txt.
+  Screenshots never read them.
+- Ask Nusa: Enter on anything that isn't a sum or a currency sends it to Gemini
+  (`gemini-flash-latest`, generateContent) with the key in the `x-goog-api-key` header. Asked for at
+  most three short sentences, plain text, in the question's language. The answer wraps, scrolls and
+  can be selected; an answer to an older question is dropped. 400/401/403 = key, 429 = busy.
+- Translate: Tab in the Ask box (the box keeps focus) translates into the app's language, or into
+  English when the text is already in it.
+- Google Calendar: the secret iCal address is read every 15 minutes (a minute after a failure).
+  RRULE DAILY/WEEKLY/MONTHLY/YEARLY with INTERVAL, UNTIL, COUNT, BYDAY (incl. 2TU, -1FR),
+  BYMONTHDAY; EXDATE; RECURRENCE-ID copies replace their day; cancelled events are left out.
+  UTC times become local; TZID times are read as the PC's zone (shortcut). Today's events show
+  first in To-do (read only) and remind at their start, following "When a task starts".
+- `--ask --demo` and `--page 4 --demo` fill screenshots with a made-up answer and events.
+- Live checks: `cargo test live -- --ignored` (MET, rates, Google holidays iCal, Gemini bad key).

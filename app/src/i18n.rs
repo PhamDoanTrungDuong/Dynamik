@@ -9,6 +9,8 @@ pub const ZH: usize = 2;
 pub const FR: usize = 3;
 /// Each language named in itself, for the Settings drop-down.
 pub const NAMES: [&str; 4] = ["English", "Tiếng Việt", "中文 (简体)", "Français"];
+/// The same languages named in English, for asking Gemini to translate into them.
+pub const ENGLISH_NAMES: [&str; 4] = ["English", "Vietnamese", "Simplified Chinese", "French"];
 
 static LANG: AtomicU8 = AtomicU8::new(EN as u8);
 /// Tests that switch or read the language hold this, so they don't see each other's choice.
@@ -335,7 +337,24 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("Ask Nusa", "Hỏi Nusa", "问 Nusa", "Demander à Nusa"),
     ("Ask anything, or a sum like 12*3=", "Hỏi bất cứ điều gì, hoặc phép tính như 12*3=", "随便问，或输入算式如 12*3=", "Posez une question, ou un calcul comme 12*3="),
     ("Ask Nusa needs a Gemini key — add one in Settings", "Hỏi Nusa cần khóa Gemini — thêm trong Cài đặt", "问 Nusa 需要 Gemini 密钥 — 请在设置中添加", "Demander à Nusa nécessite une clé Gemini — ajoutez-la dans Réglages"),
-    ("Enter to ask · Esc to close", "Enter để hỏi · Esc để đóng", "回车提问 · Esc 关闭", "Entrée pour demander · Échap pour fermer"),
+    ("Enter to ask · Tab to translate · Esc to close", "Enter để hỏi · Tab để dịch · Esc để đóng", "回车提问 · Tab 翻译 · Esc 关闭", "Entrée pour demander · Tab pour traduire · Échap pour fermer"),
+    ("Thinking…", "Đang nghĩ…", "思考中…", "Réflexion…"),
+    ("Gemini turned the key down — check it in Settings", "Gemini từ chối khóa — kiểm tra lại trong Cài đặt", "Gemini 拒绝了密钥 — 请在设置中检查", "Gemini a refusé la clé — vérifiez-la dans Réglages"),
+    ("Too many questions just now — try again in a minute", "Hỏi nhiều quá — thử lại sau một phút", "提问过于频繁 — 请一分钟后再试", "Trop de questions pour l'instant — réessayez dans une minute"),
+    ("Couldn't reach Gemini — check the internet", "Không kết nối được Gemini — kiểm tra mạng", "无法连接 Gemini — 请检查网络", "Gemini injoignable — vérifiez la connexion"),
+    ("Gemini gave no answer to that", "Gemini không trả lời câu này", "Gemini 没有回答这个问题", "Gemini n'a pas répondu à cela"),
+    ("Paste here", "Dán vào đây", "粘贴到这里", "Collez ici"),
+    ("Gemini key — free at aistudio.google.com/apikey; kept sealed on this PC", "Khóa Gemini — lấy miễn phí ở aistudio.google.com/apikey; được mã hóa trên máy này", "Gemini 密钥 — 在 aistudio.google.com/apikey 免费获取；在本机加密保存", "Clé Gemini — gratuite sur aistudio.google.com/apikey ; chiffrée sur ce PC"),
+    ("Google Calendar", "Google Lịch", "Google 日历", "Google Agenda"),
+    ("Secret iCal address — Google Calendar › Settings › your calendar › Integrate calendar", "Địa chỉ iCal bí mật — Google Lịch › Cài đặt › lịch của bạn › Tích hợp lịch", "iCal 私密地址 — Google 日历 › 设置 › 你的日历 › 集成日历", "Adresse iCal secrète — Google Agenda › Paramètres › votre agenda › Intégrer l'agenda"),
+    ("Today's events show in To-do and remind you when they start", "Sự kiện hôm nay hiện trong Danh sách và nhắc khi bắt đầu", "今天的日程显示在待办中，开始时提醒", "Les événements du jour s'affichent dans la liste et vous préviennent au début"),
+    ("The address should start with https://", "Địa chỉ phải bắt đầu bằng https://", "地址应以 https:// 开头", "L'adresse doit commencer par https://"),
+    ("{} events today", "{} sự kiện hôm nay", "今天 {} 个日程", "{} événements aujourd'hui"),
+    ("Couldn't read the calendar — check the address and the internet", "Không đọc được lịch — kiểm tra địa chỉ và mạng", "无法读取日历 — 请检查地址和网络", "Impossible de lire l'agenda — vérifiez l'adresse et la connexion"),
+    ("Reading the calendar…", "Đang đọc lịch…", "正在读取日历…", "Lecture de l'agenda…"),
+    ("Calendar", "Lịch", "日历", "Agenda"),
+    ("All day", "Cả ngày", "全天", "Toute la journée"),
+    ("(No title)", "(Không tiêu đề)", "（无标题）", "(Sans titre)"),
     ("Quit", "Thoát", "退出", "Quitter"),
     ("Exit", "Thoát", "退出", "Quitter"),
     ("Show prayer times — worked out on this PC, for any city", "Hiện giờ cầu nguyện — tính ngay trên máy, cho mọi thành phố", "显示祷告时间 — 在本机计算，适用于任何城市", "Afficher les heures de prière — calculées sur ce PC, pour toute ville"),

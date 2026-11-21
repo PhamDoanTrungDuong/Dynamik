@@ -13,7 +13,7 @@ const WEATHER_EVERY: Duration = Duration::from_secs(30 * 60);
 const RATES_FOR: Duration = Duration::from_secs(12 * 3600);
 const RETRY_AFTER: Duration = Duration::from_secs(60);
 
-fn get(url: &str) -> Option<String> {
+pub fn get(url: &str) -> Option<String> {
     // WinRT needs this once on each thread that uses it; again is harmless.
     let _ = unsafe { windows::Win32::System::WinRT::RoInitialize(windows::Win32::System::WinRT::RO_INIT_MULTITHREADED) };
     let client = HttpClient::new().ok()?;
@@ -21,6 +21,77 @@ fn get(url: &str) -> Option<String> {
     let _ = client.DefaultRequestHeaders().ok()?.TryAppendWithoutValidation(&HSTRING::from("User-Agent"), &HSTRING::from(AGENT));
     let uri = Uri::CreateUri(&HSTRING::from(url)).ok()?;
     Some(client.GetStringAsync(&uri).ok()?.get().ok()?.to_string())
+}
+
+/// Why Gemini gave no answer.
+#[derive(Debug, PartialEq)]
+pub enum AskError {
+    Key,     // turned down: the key is wrong or not allowed
+    Busy,    // too many questions for the free tier just now
+    Offline, // no answer at all
+    Empty,   // answered, but with no text (e.g. blocked)
+}
+
+/// "Latest" follows Google's current Flash model, so the app keeps working when one is retired.
+const GEMINI: &str = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent";
+
+/// One question to Gemini with the user's own key. `rule` tells it how to answer.
+pub fn gemini(key: &str, rule: &str, question: &str) -> Result<String, AskError> {
+    let _ = unsafe { windows::Win32::System::WinRT::RoInitialize(windows::Win32::System::WinRT::RO_INIT_MULTITHREADED) };
+    let body = format!(
+        r#"{{"systemInstruction":{{"parts":[{{"text":{}}}]}},"contents":[{{"role":"user","parts":[{{"text":{}}}]}}]}}"#,
+        json_str(rule),
+        json_str(question)
+    );
+    let send = || -> windows::core::Result<(i32, String)> {
+        use windows::{Storage::Streams::UnicodeEncoding, Web::Http::HttpStringContent};
+        let client = HttpClient::new()?;
+        let headers = client.DefaultRequestHeaders()?;
+        // In a header, not the address, so the key never shows up in logs of the URL.
+        headers.TryAppendWithoutValidation(&HSTRING::from("x-goog-api-key"), &HSTRING::from(key))?;
+        let content = HttpStringContent::CreateFromStringWithEncodingAndMediaType(&HSTRING::from(body.as_str()), UnicodeEncoding::Utf8, &HSTRING::from("application/json"))?;
+        let reply = client.PostAsync(&Uri::CreateUri(&HSTRING::from(GEMINI))?, &content)?.get()?;
+        let status = reply.StatusCode()?.0;
+        Ok((status, reply.Content()?.ReadAsStringAsync()?.get()?.to_string()))
+    };
+    match send() {
+        Err(_) => Err(AskError::Offline),
+        Ok((200, text)) => gemini_text(&text).ok_or(AskError::Empty),
+        Ok((429, _)) => Err(AskError::Busy),
+        Ok((400 | 401 | 403, _)) => Err(AskError::Key),
+        Ok(_) => Err(AskError::Offline),
+    }
+}
+
+/// The answer's text: every text part of the first candidate, joined.
+pub fn gemini_text(body: &str) -> Option<String> {
+    let mut rest = &body[body.find("\"candidates\"")?..];
+    let mut out = String::new();
+    while let Some(i) = rest.find("\"text\"") {
+        rest = &rest[i..];
+        out += &crate::media::json_string(rest, "text")?;
+        rest = &rest[6..];
+    }
+    let out = out.trim().to_string();
+    (!out.is_empty()).then_some(out)
+}
+
+/// A JSON string literal.
+fn json_str(s: &str) -> String {
+    let mut o = String::from('"');
+    for c in s.chars() {
+        match c {
+            '"' => o += "\\\"",
+            '\\' => o += "\\\\",
+            '\n' => o += "\\n",
+            '\r' => o += "\\r",
+            '\t' => o += "\\t",
+            c if (c as u32) < 0x20 => o += &format!("\\u{:04x}", c as u32),
+            c => o.push(c),
+        }
+    }
+    o.push('"');
+    o
 }
 
 #[derive(Clone)]
@@ -155,6 +226,17 @@ mod tests {
     }
 
     #[test]
+    fn reads_gemini_answers() {
+        // Shaped like a generateContent answer, with the answer split over two parts.
+        let body = r#"{"candidates":[{"content":{"parts":[{"text":"Hà Nội là \"thủ đô\"\n"},{"text":"của Việt Nam."}],"role":"model"},"finishReason":"STOP"}],
+            "usageMetadata":{"promptTokenCount":9,"promptTokensDetails":[{"modality":"TEXT","tokenCount":9}]},"modelVersion":"gemini-flash"}"#;
+        assert_eq!(gemini_text(body).unwrap(), "Hà Nội là \"thủ đô\"\ncủa Việt Nam.");
+        assert!(gemini_text(r#"{"candidates":[{"finishReason":"SAFETY"}]}"#).is_none());
+        assert!(gemini_text(r#"{"error":{"message":"API key not valid"}}"#).is_none());
+        assert_eq!(json_str("a\"b\\c\nd\u{1}"), r#""a\"b\\c\nd\u0001""#);
+    }
+
+    #[test]
     fn reads_rates() {
         let body = r#"{"result":"success","base_code":"USD","rates":{"USD":1,"VND":25400.5,"EUR":0.92,"JPY":155.1},"time_eol_unix":0}"#;
         let r = parse_rates(body);
@@ -173,5 +255,12 @@ mod tests {
         let rates = parse_rates(&get("https://open.er-api.com/v6/latest/USD").expect("rates answered"));
         assert!(rates["VND"] > 10_000.0 && rates["EUR"] < 2.0, "{:?} {:?}", rates.get("VND"), rates.get("EUR"));
         println!("Hanoi now: {} °C, {}; 1 USD = {} VND", w.temp, w.symbol, rates["VND"]);
+    }
+
+    /// Gemini answers a made-up key with "not valid", which proves the request itself is well formed.
+    #[test]
+    #[ignore]
+    fn live_gemini_turns_a_bad_key_down() {
+        assert_eq!(gemini("not-a-real-key", "Answer briefly.", "Hi"), Err(AskError::Key));
     }
 }

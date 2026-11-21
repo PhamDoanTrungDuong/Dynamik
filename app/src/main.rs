@@ -2,6 +2,7 @@
 //! A notch at the top of the screen: Pomodoro, Water, Shelf, To-do, Prayer and Widgets pages,
 //! drawn to match the original's black notch with page dots and spring motion.
 mod calc;
+mod calendar;
 mod data;
 mod ocr;
 mod online;
@@ -174,7 +175,7 @@ enum HudKind { Volume, Muted, Brightness, Caps, Lang }
 /// Asking Windows where this PC is, for "My location".
 #[derive(Clone, Copy, PartialEq)]
 enum Locating { Idle, Busy, Failed, Got(f64, f64) }
-enum Kind { Drink, Refill, TaskStart(usize), TaskEnd(usize), Prayer(u32, bool), Battery(u8, bool), Hud(HudKind, f32), Network(u8), Bluetooth(Option<u8>), Notice(String, String), Info, About }
+enum Kind { Drink, Refill, TaskStart(usize), TaskEnd(usize), Event(u32), Prayer(u32, bool), Battery(u8, bool), Hud(HudKind, f32), Network(u8), Bluetooth(Option<u8>), Notice(String, String), Info, About }
 struct Alert { title: String, body: String, kind: Kind, at: Instant }
 
 /// A critically-tuned spring for one value.
@@ -208,6 +209,17 @@ struct App {
     ask_text: String,
     ask_answer: String,
     ask_focus: bool,
+    // Gemini: the user's key (kept sealed on disk), and the answer to question number `ask_gen`
+    // while `ask_waiting`; an older question's late answer is dropped.
+    gemini_key: String,
+    ask_gen: u64,
+    ask_waiting: bool,
+    ask_reply: std::sync::Arc<std::sync::Mutex<(u64, String)>>,
+    // Calendar: the secret iCal address (sealed too), what the watcher read, and reminders shown.
+    ical_text: String,
+    ical_url: std::sync::Arc<std::sync::Mutex<String>>,
+    calendar: std::sync::Arc<std::sync::Mutex<calendar::Today>>,
+    cal_fired: HashSet<(NaiveDate, u32, String)>,
     locating: std::sync::Arc<std::sync::Mutex<Locating>>,
     ocr: std::sync::Arc<std::sync::Mutex<Option<ocr::Outcome>>>,
     expanded: bool,
@@ -304,6 +316,7 @@ impl App {
         // A screenshot of the Today page needs the page on (in memory only; settings are saved only from Settings).
         s.today_page |= shot.is_some() && page == TODAY_PAGE;
         let shot_demo = shot.is_some() && page == TODAY_PAGE && std::env::args().any(|a| a == "--demo");
+        let shot_demo_ask = shot.is_some() && std::env::args().any(|a| a == "--ask") && std::env::args().any(|a| a == "--demo");
         let now = Local::now().naive_local();
         let w = kv(&read("water.txt"));
         let water_day = w.get("day").and_then(|d| d.parse().ok()).unwrap_or(now.date());
@@ -336,9 +349,28 @@ impl App {
         let last_clip = clipboard.as_mut().and_then(|c| c.get_text().ok()).unwrap_or_default();
         let left = s.focus as f64 * 60.0;
         let start = if shot.is_some() && !resting { EXPANDED } else { COLLAPSED };
+        // Screenshots never read the secrets.
+        let secret = |name: &str| if live { read_secret(name) } else { String::new() };
+        let ical_text = secret(ICAL_FILE);
+        let ical_url = std::sync::Arc::new(std::sync::Mutex::new(ical_text.clone()));
         App {
+            gemini_key: secret(GEMINI_FILE), ask_gen: 0, ask_waiting: false, ask_reply: Default::default(),
+            calendar: if live {
+                calendar::watch(ical_url.clone())
+            } else {
+                // --demo on a screenshot of To-do shows made-up events.
+                let demo = std::env::args().any(|a| a == "--demo") && page == 4;
+                let ev = |title: &str, start, dur| calendar::Event { title: title.into(), start, dur };
+                let events = if demo { vec![ev("Team trip", None, 0), ev("Standup", Some(540), 30)] } else { vec![] };
+                std::sync::Arc::new(std::sync::Mutex::new(calendar::Today { status: calendar::Status::Ready, events }))
+            },
+            ical_text, ical_url, cal_fired: HashSet::new(),
             now, page: page.min(PAGES.len() - 1), page_anim: page.min(PAGES.len() - 1) as f32, settings_open: shot.is_some() && std::env::args().any(|a| a == "--settings"),
-            ask_open: shot.is_some() && std::env::args().any(|a| a == "--ask"), ask_text: String::new(), ask_answer: String::new(), ask_focus: false,
+            ask_open: shot.is_some() && std::env::args().any(|a| a == "--ask"),
+            // --ask --demo shows a made-up long answer, to check how it wraps.
+            ask_text: if shot_demo_ask { "Why is the sky blue?".into() } else { String::new() },
+            ask_answer: if shot_demo_ask { DEMO_ANSWER.into() } else { String::new() },
+            ask_focus: false,
             locating: std::sync::Arc::new(std::sync::Mutex::new(Locating::Idle)),
             ocr: Default::default(),
             expanded: shot.is_some() && !resting, held: false, resting, last_inside: Instant::now(), applied: None,
@@ -533,6 +565,21 @@ impl App {
             }
         }
 
+        // Calendar events remind as tasks do: at the start, within the first hour, once.
+        if self.alert.is_none() && self.s.todo_start {
+            let today = self.today();
+            let events = self.calendar.lock().unwrap().events.clone();
+            let due = events.into_iter().find(|e| {
+                e.start.is_some_and(|st| m >= st && m < st + 60) && !self.cal_fired.contains(&(today, e.start.unwrap(), e.title.clone()))
+            });
+            if let Some(e) = due {
+                let st = e.start.unwrap();
+                self.cal_fired.insert((today, st, e.title.clone()));
+                let title = if e.title.is_empty() { t("(No title)").to_string() } else { e.title };
+                self.notify(t("Calendar"), &title, Kind::Event(st));
+            }
+        }
+
         // "My location" not found yet would time prayers for 0°, 0°: no reminders until it is.
         let placed = self.s.prayer_city != prayer::here_index() || (self.s.prayer_lat, self.s.prayer_lon) != (0.0, 0.0);
         if self.s.prayer && placed && (self.s.prayer_reminder || self.s.prayer_pause_media) && self.alert.is_none() {
@@ -619,6 +666,7 @@ impl App {
             Kind::Notice(..) => a.at.elapsed().as_secs_f32() > NOTICE_POPUP_SECS,
             Kind::About => a.at.elapsed().as_secs_f32() > ABOUT_SECS,
             Kind::Prayer(_, early) => a.at.elapsed().as_secs_f32() > if early { PRAYER_EARLY_SECS } else { PRAYER_POPUP_SECS },
+            Kind::Event(_) => a.at.elapsed().as_secs_f32() > PRAYER_POPUP_SECS,
             _ => false,
         }) {
             self.alert = None;
@@ -904,6 +952,10 @@ impl App {
                 p.text(pos2(right, r.center().y - 4.0), Align2::RIGHT_CENTER, hm(at), bold(17.0), WHITE);
                 let bar = Rect::from_min_max(pos2(r.left() + 32.0, r.bottom() - 12.0), pos2(r.right() - 32.0, r.bottom() - 7.0));
                 gradient_bar(&p, bar, 1.0, BLUE, PURPLE);
+            }
+            Kind::Event(at) => {
+                calendar_icon(&p, icon, BLUE);
+                p.text(pos2(right, r.center().y), Align2::RIGHT_CENTER, hm(at), bold(17.0), WHITE);
             }
             Kind::Drink | Kind::Refill => {
                 drop_icon(&p, icon, 12.0, BLUE);
@@ -1519,7 +1571,8 @@ impl App {
             return;
         }
 
-        if self.tasks.is_empty() {
+        let events = self.calendar.lock().unwrap().events.clone();
+        if self.tasks.is_empty() && events.is_empty() {
             p.text(list.center(), Align2::CENTER_CENTER, t("No tasks."), reg(14.0), DIM);
             return;
         }
@@ -1528,6 +1581,17 @@ impl App {
         let mut edit = None;
         ui.allocate_new_ui(egui::UiBuilder::new().max_rect(list), |ui| {
             egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
+                // Today's calendar events come first; they are read from the calendar, so not editable here.
+                for e in &events {
+                    let (row, _) = ui.allocate_exact_size(vec2(list.width() - 12.0, 34.0), Sense::hover());
+                    let pp = ui.painter();
+                    pp.rect_filled(row.shrink2(vec2(0.0, 3.0)), 9.0, BLUE_DARK.gamma_multiply(0.45));
+                    calendar_icon(pp, pos2(row.left() + 20.0, row.center().y), BLUE);
+                    let title = if e.title.is_empty() { t("(No title)") } else { e.title.as_str() };
+                    pp.text(pos2(row.left() + 38.0, row.center().y), Align2::LEFT_CENTER, ellipsize(title, 26), reg(14.0), WHITE);
+                    let when = e.start.map_or_else(|| t("All day").to_string(), |s| hm(s));
+                    pp.text(pos2(row.right() - 10.0, row.center().y), Align2::RIGHT_CENTER, when, reg(12.0), DIM);
+                }
                 for (i, t) in self.tasks.iter().enumerate() {
                     let (row, resp) = ui.allocate_exact_size(vec2(list.width() - 12.0, 34.0), Sense::click());
                     let is_done = t.done_day.is_some();
@@ -1842,12 +1906,26 @@ impl App {
         settings_style(ui);
         let edit = ui.put(
             field.shrink2(vec2(14.0, 7.0)),
-            egui::TextEdit::singleline(&mut self.ask_text).hint_text(t("Ask anything, or a sum like 12*3=")).frame(false).font(reg(15.0)),
+            // lock_focus: Tab stays in the box (a one-line box adds no tab character) and translates.
+            egui::TextEdit::singleline(&mut self.ask_text).hint_text(t("Ask anything, or a sum like 12*3=")).frame(false).font(reg(15.0)).lock_focus(true),
         );
         if std::mem::take(&mut self.ask_focus) {
             edit.request_focus();
         }
         let enter = edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        let tab = edit.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Tab));
+        if edit.changed() {
+            self.ask_gen += 1; // the question changed: an answer still on its way is for the old one
+            self.ask_waiting = false;
+        }
+        // Gemini's answer to the latest question.
+        if self.ask_waiting {
+            let reply = self.ask_reply.lock().unwrap().clone();
+            if reply.0 == self.ask_gen {
+                self.ask_waiting = false;
+                self.ask_answer = reply.1;
+            }
+        }
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.ask_open = false;
             self.held = false;
@@ -1871,29 +1949,72 @@ impl App {
             if enter {
                 edit.request_focus();
             }
+        } else if tab && !q.is_empty() {
+            let rule = format!(
+                "Translate the user's text into {}. If it is already in that language, translate it into English. Reply with the translation only.",
+                i18n::ENGLISH_NAMES[i18n::lang()]
+            );
+            self.ask_gemini(&rule, q.to_string());
         } else if edit.changed() || enter {
-            self.ask_answer = match calc::eval(q) {
+            match calc::eval(q) {
                 // A sum answers once it ends with "=", or on Enter.
-                Some(v) if q.ends_with('=') || enter => format!("= {}", calc::show(v)),
-                Some(_) => String::new(),
-                None if enter && !q.is_empty() => t("Ask Nusa needs a Gemini key — add one in Settings").to_string(),
-                None => String::new(),
-            };
-            if enter {
-                edit.request_focus();
+                Some(v) if q.ends_with('=') || enter => self.ask_answer = format!("= {}", calc::show(v)),
+                None if enter && !q.is_empty() => {
+                    let rule = "You answer inside a small notch on a Windows PC. Answer in at most three short sentences, \
+                        in plain text with no Markdown, in the language of the question.";
+                    self.ask_gemini(rule, q.to_string());
+                }
+                _ => self.ask_answer.clear(),
             }
         }
-        if !self.ask_answer.is_empty() {
-            let big = self.ask_answer.starts_with('=');
-            let (font, col) = if big { (bold(30.0), WHITE) } else { (reg(14.0), DIM) };
-            p.text(pos2(r.left() + 30.0, r.top() + 116.0), Align2::LEFT_CENTER, &self.ask_answer, font, col);
+        if enter || tab {
+            edit.request_focus();
         }
-        p.text(pos2(r.center().x, r.bottom() - 14.0), Align2::CENTER_CENTER, t("Enter to ask · Esc to close"), reg(11.0), DIM);
+        if !self.ask_answer.is_empty() {
+            if self.ask_answer.starts_with('=') {
+                p.text(pos2(r.left() + 30.0, r.top() + 116.0), Align2::LEFT_CENTER, &self.ask_answer, bold(30.0), WHITE);
+            } else {
+                // Gemini's answers wrap and scroll, and can be selected to copy.
+                let area = Rect::from_min_max(pos2(r.left() + 30.0, r.top() + 92.0), pos2(r.right() - 30.0, r.bottom() - 28.0));
+                let col = if self.ask_waiting { DIM } else { WHITE };
+                ui.allocate_new_ui(egui::UiBuilder::new().max_rect(area), |ui| {
+                    egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
+                        ui.add(egui::Label::new(egui::RichText::new(&self.ask_answer).font(reg(14.0)).color(col)).wrap());
+                    });
+                });
+            }
+        }
+        p.text(pos2(r.center().x, r.bottom() - 14.0), Align2::CENTER_CENTER, t("Enter to ask · Tab to translate · Esc to close"), reg(11.0), DIM);
+    }
+
+    /// Sends `question` to Gemini on its own thread; the answer shows when it comes back.
+    fn ask_gemini(&mut self, rule: &str, question: String) {
+        if self.gemini_key.trim().is_empty() {
+            self.ask_answer = t("Ask Nusa needs a Gemini key — add one in Settings").to_string();
+            return;
+        }
+        self.ask_gen += 1;
+        self.ask_waiting = true;
+        self.ask_answer = t("Thinking…").to_string();
+        let (n, key, rule, out) = (self.ask_gen, self.gemini_key.trim().to_string(), rule.to_string(), self.ask_reply.clone());
+        std::thread::spawn(move || {
+            let answer = match online::gemini(&key, &rule, &question) {
+                Ok(a) => a,
+                Err(online::AskError::Key) => t("Gemini turned the key down — check it in Settings").to_string(),
+                Err(online::AskError::Busy) => t("Too many questions just now — try again in a minute").to_string(),
+                Err(online::AskError::Offline) => t("Couldn't reach Gemini — check the internet").to_string(),
+                Err(online::AskError::Empty) => t("Gemini gave no answer to that").to_string(),
+            };
+            *out.lock().unwrap() = (n, answer);
+            tray::wake();
+        });
     }
 
     fn page_settings(&mut self, ui: &mut egui::Ui, r: Rect) {
         let before = self.s.clone();
         let locating = self.locating.clone();
+        let (gemini, ical, ical_url) = (&mut self.gemini_key, &mut self.ical_text, self.ical_url.clone());
+        let cal = self.calendar.lock().unwrap().clone();
         let inner = Rect::from_min_max(pos2(r.left() + 18.0, r.top() + 44.0), pos2(r.right() - 18.0, r.bottom() - 10.0));
         settings_style(ui);
         ui.allocate_new_ui(egui::UiBuilder::new().max_rect(inner), |ui| {
@@ -2000,6 +2121,27 @@ impl App {
                 });
                 card(ui, "Music", |ui| {
                     switch_row(ui, "Show lyrics — from LRCLIB, a community lyrics database (after restart)", &mut s.lyrics);
+                });
+                card(ui, "Ask Nusa", |ui| {
+                    // Kept sealed with Windows DPAPI, never in settings.txt.
+                    if secret_row(ui, "Gemini key — free at aistudio.google.com/apikey; kept sealed on this PC", gemini) {
+                        write_secret(GEMINI_FILE, gemini.trim());
+                    }
+                });
+                card(ui, "Google Calendar", |ui| {
+                    if secret_row(ui, "Secret iCal address — Google Calendar › Settings › your calendar › Integrate calendar", ical) {
+                        write_secret(ICAL_FILE, ical.trim());
+                        *ical_url.lock().unwrap() = ical.trim().to_string();
+                    }
+                    let state = match cal.status {
+                        _ if ical.trim().is_empty() => t("Today's events show in To-do and remind you when they start").to_string(),
+                        _ if !ical.trim().starts_with("https://") && !ical.trim().starts_with("webcal://") => t("The address should start with https://").to_string(),
+                        calendar::Status::Ready => tr("{} events today", &[&cal.events.len()]),
+                        calendar::Status::Failed => t("Couldn't read the calendar — check the address and the internet").to_string(),
+                        _ => t("Reading the calendar…").to_string(),
+                    };
+                    ui.label(egui::RichText::new(state).font(reg(12.0)).color(DIM));
+                    ui.add_space(8.0);
                 });
                 card(ui, "Pages", |ui| {
                     // Reorder with the arrows, leave pages out with the switch; one always stays.
@@ -2215,7 +2357,7 @@ impl eframe::App for App {
                     self.expanded = true;
                 }
             } else if !self.expanded && resp.clicked() {
-                if self.alert.as_ref().is_some_and(|a| matches!(a.kind, Kind::Info | Kind::Battery(..) | Kind::Prayer(..))) {
+                if self.alert.as_ref().is_some_and(|a| matches!(a.kind, Kind::Info | Kind::Battery(..) | Kind::Prayer(..) | Kind::Event(_))) {
                     self.alert = None;
                 }
                 self.expanded = true;
@@ -2646,6 +2788,14 @@ fn moon_icon(p: &egui::Painter, c: Pos2, r: f32) {
     p.circle_filled(c + vec2(r * 0.45, -r * 0.3), r * 0.9, BG);
 }
 
+/// A small page of a calendar: a frame with a filled top band.
+fn calendar_icon(p: &egui::Painter, c: Pos2, col: Color32) {
+    let r = Rect::from_center_size(c, vec2(20.0, 18.0));
+    p.rect_stroke(r, 3.0, Stroke::new(1.6_f32, col), egui::StrokeKind::Inside);
+    p.rect_filled(Rect::from_min_max(r.min, pos2(r.right(), r.top() + 5.0)), egui::CornerRadius { nw: 3, ne: 3, sw: 0, se: 0 }, col);
+    p.circle_filled(c + vec2(0.0, 3.0), 2.0, col);
+}
+
 fn drop_icon(p: &egui::Painter, c: Pos2, r: f32, col: Color32) {
     p.circle_filled(c + vec2(0.0, r * 0.25), r * 0.7, col);
     p.add(Shape::convex_polygon(vec![c + vec2(0.0, -r), c + vec2(r * 0.66, r * 0.05), c + vec2(-r * 0.66, r * 0.05)], col, Stroke::NONE));
@@ -2786,6 +2936,18 @@ fn move_button(ui: &mut egui::Ui, text: &str, what: &str) -> bool {
     p.circle_filled(r.center(), 11.0, if resp.hovered() { Color32::from_gray(60) } else { BTN });
     p.text(r.center(), Align2::CENTER_CENTER, text, bold(13.0), WHITE);
     resp.clicked()
+}
+
+/// A row with a hidden text box for a secret; true when it changed.
+fn secret_row(ui: &mut egui::Ui, label: &str, v: &mut String) -> bool {
+    let mut changed = false;
+    row(ui, label, |ui| {
+        let name = t(label).split(" — ").next().unwrap_or(label).to_string();
+        let resp = ui.add(egui::TextEdit::singleline(v).password(true).hint_text(t("Paste here")).desired_width(170.0).background_color(BTN).margin(egui::Margin::symmetric(8, 5)));
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, &name));
+        changed = resp.changed();
+    });
+    changed
 }
 
 fn number<T: egui::emath::Numeric>(ui: &mut egui::Ui, label: &str, v: &mut T, range: std::ops::RangeInclusive<T>, suffix: &str) {
@@ -2997,6 +3159,9 @@ fn lang_name(lang: u16) -> String {
     let s = String::from_utf16_lossy(&buf[..(n.max(1) - 1) as usize]).to_uppercase();
     if s.is_empty() { format!("{lang:04X}") } else { s }
 }
+
+const DEMO_ANSWER: &str = "Sunlight is made of every colour. Air scatters short blue waves far more than red ones, \
+    so blue light reaches your eyes from all over the sky. At sunset the light crosses more air, and the reds win.";
 
 /// Made-up notifications for checking the Today page's look (`--page 7 --demo`).
 fn demo_recent() -> Vec<(i64, media::Notice)> {

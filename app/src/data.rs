@@ -19,6 +19,9 @@ pub const PRAYER_EARLY_MIN: u32 = 10;
 pub const WATER_SNOOZE_MIN: u32 = 10; // 0x1400583ab: snooze = now + 10, capped at 23:59
 pub const REFILL_FRACTION: f32 = 0.75; // 0x140002222: refill when bottle < 0.75 x one drink
 
+pub const GEMINI_FILE: &str = "gemini.key";
+pub const ICAL_FILE: &str = "calendar.key";
+
 pub fn dir() -> PathBuf {
     let base = std::env::var_os("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
     let d = base.join("MyNotch");
@@ -37,6 +40,46 @@ pub fn write(name: &str, text: &str) {
     if fs::write(&tmp, text).is_ok() {
         let _ = fs::rename(&tmp, &p);
     }
+}
+
+/// A secret (the Gemini key, the calendar's private address), sealed with Windows DPAPI so only
+/// this Windows account on this PC can open it. Empty when missing or unreadable.
+pub fn read_secret(name: &str) -> String {
+    let sealed = fs::read(dir().join(name)).unwrap_or_default();
+    if sealed.is_empty() {
+        return String::new();
+    }
+    dpapi(&sealed, false).and_then(|b| String::from_utf8(b).ok()).unwrap_or_default()
+}
+
+/// Seals and saves a secret; an empty one removes the file.
+pub fn write_secret(name: &str, text: &str) {
+    let p = dir().join(name);
+    if text.is_empty() {
+        let _ = fs::remove_file(p);
+    } else if let Some(sealed) = dpapi(text.as_bytes(), true) {
+        let _ = fs::write(p, sealed);
+    }
+}
+
+fn dpapi(data: &[u8], seal: bool) -> Option<Vec<u8>> {
+    use windows_sys::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB};
+    let input = CRYPT_INTEGER_BLOB { cbData: data.len() as u32, pbData: data.as_ptr() as *mut u8 };
+    let mut out = CRYPT_INTEGER_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
+    use std::ptr::{null, null_mut};
+    let ok = unsafe {
+        if seal {
+            CryptProtectData(&input, null(), null(), null(), null(), CRYPTPROTECT_UI_FORBIDDEN, &mut out)
+        } else {
+            CryptUnprotectData(&input, null_mut(), null(), null(), null(), CRYPTPROTECT_UI_FORBIDDEN, &mut out)
+        }
+    };
+    if ok == 0 || out.pbData.is_null() {
+        return None;
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(out.pbData, out.cbData as usize) }.to_vec();
+    unsafe { windows_sys::Win32::Foundation::LocalFree(out.pbData as _) };
+    Some(bytes)
 }
 
 pub fn kv(text: &str) -> BTreeMap<String, String> {
@@ -357,6 +400,15 @@ mod tests {
         let s = Settings::from_text("page_order=3,0,1,2,4,5,6,7\npages_hidden=2,9", "");
         assert_eq!(s.page_order[0], 3);
         assert_eq!(s.pages_hidden, vec![2]); // 9 is no page
+    }
+
+    #[test]
+    fn dpapi_seals_and_opens() {
+        let key = "AIzaSy-example-not-real";
+        let sealed = dpapi(key.as_bytes(), true).unwrap();
+        assert!(!sealed.windows(key.len()).any(|w| w == key.as_bytes()), "sealed bytes must not hold the key");
+        assert_eq!(dpapi(&sealed, false).unwrap(), key.as_bytes());
+        assert!(dpapi(b"not sealed", false).is_none());
     }
 
     #[test]
