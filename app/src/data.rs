@@ -128,6 +128,7 @@ pub struct Settings {
     pub popup_wifi: bool,
     pub hide_fullscreen: bool,
     pub welcomed: bool, // the first-start hint has been shown
+    pub auto_next: bool, // Pomodoro: the next part starts by itself
     pub lyrics: bool,
     pub hud_volume: bool,
     pub hud_caps: bool,
@@ -216,6 +217,7 @@ impl Settings {
             popup_wifi: get(&m, "popup_wifi", true),
             hide_fullscreen: get(&m, "hide_fullscreen", true),
             welcomed: get(&m, "welcomed", false),
+            auto_next: get(&m, "auto_next", false),
             lyrics: get(&m, "lyrics", true),
             hud_volume: get(&m, "hud_volume", true),
             hud_caps: get(&m, "hud_caps", true),
@@ -280,6 +282,7 @@ impl Settings {
             format!("popup_wifi={}", s.popup_wifi),
             format!("hide_fullscreen={}", s.hide_fullscreen),
             format!("welcomed={}", s.welcomed),
+            format!("auto_next={}", s.auto_next),
             format!("lyrics={}", s.lyrics),
             format!("hud_volume={}", s.hud_volume),
             format!("hud_caps={}", s.hud_caps),

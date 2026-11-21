@@ -521,6 +521,11 @@ impl App {
         if skipped {
             self.running = was_running;
             self.last_tick = Instant::now();
+        } else if self.s.auto_next {
+            // Goes on by itself: the pop-up only says so, and closes on its own.
+            self.running = true;
+            self.last_tick = Instant::now();
+            self.notify(title, &body, Kind::About);
         } else {
             self.notify(title, &body, Kind::Info);
         }
@@ -2262,6 +2267,7 @@ impl App {
                     number(ui, "Focus", &mut s.focus, 1..=120, " min");
                     number(ui, "Short break", &mut s.short_break, 1..=60, " min");
                     number(ui, "Long break", &mut s.long_break, 1..=60, " min");
+                    switch_row(ui, "Go on by itself — the next break or focus starts without a click", &mut s.auto_next);
                 });
                 card(ui, "To-do reminders", |ui| {
                     switch_row(ui, "When a task starts", &mut s.todo_start);
