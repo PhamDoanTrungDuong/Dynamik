@@ -1472,7 +1472,10 @@ impl App {
         p.text(pos2(rx, r.top() + 52.0), Align2::LEFT_CENTER, t("This round"), reg(13.0), DIM);
         let full = self.left >= self.mode_len(self.mode);
         let text = if self.running { t("Pause") } else if full { t("Start") } else { t("Resume") };
-        if pill_button(ui, Rect::from_min_size(pos2(r.left() + 354.0, r.top() + 40.0), vec2(78.0, 26.0)), text, BTN, "pp") {
+        // Space starts and pauses too, on this page and while nothing is being typed.
+        let typing = ui.ctx().memory(|m| m.focused().is_some());
+        let space = self.page == 1 && !typing && ui.input(|i| i.modifiers.is_none() && i.key_pressed(egui::Key::Space));
+        if pill_button(ui, Rect::from_min_size(pos2(r.left() + 354.0, r.top() + 40.0), vec2(78.0, 26.0)), text, BTN, "pp") || space {
             self.running = !self.running;
             self.last_tick = Instant::now();
         }
