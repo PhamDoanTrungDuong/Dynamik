@@ -233,6 +233,7 @@ struct App {
     wheel_last: Instant,
     wheel_rest: Instant,
     scroll_zone: Option<Rect>,
+    logos: std::collections::HashMap<String, egui::TextureHandle>, // notification logos by app id
     locating: std::sync::Arc<std::sync::Mutex<Locating>>,
     ocr: std::sync::Arc<std::sync::Mutex<Option<ocr::Outcome>>>,
     expanded: bool,
@@ -384,7 +385,7 @@ impl App {
                 std::sync::Arc::new(std::sync::Mutex::new(calendar::Today { status: calendar::Status::Ready, events }))
             },
             ical_text, ical_url, cal_fired: HashSet::new(),
-            hotkeys_told: !live, wheel_acc: 0.0, wheel_last: Instant::now(), wheel_rest: Instant::now(), scroll_zone: None,
+            hotkeys_told: !live, wheel_acc: 0.0, wheel_last: Instant::now(), wheel_rest: Instant::now(), scroll_zone: None, logos: Default::default(),
             now, page: page.min(PAGES.len() - 1), page_anim: page.min(PAGES.len() - 1) as f32, settings_open: shot.is_some() && std::env::args().any(|a| a == "--settings"),
             ask_open: shot.is_some() && std::env::args().any(|a| a == "--ask"),
             // --ask --demo shows a made-up long answer, to check how it wraps.
@@ -860,6 +861,18 @@ impl App {
         }
     }
 
+    /// The notifying app's logo as a texture, made once per app from what the watcher read.
+    fn logo_texture(&mut self, ctx: &egui::Context, id: &str) -> Option<egui::TextureHandle> {
+        if let Some(t) = self.logos.get(id) {
+            return Some(t.clone());
+        }
+        let logo = media::logo(id)?;
+        let img = egui::ColorImage::from_rgba_unmultiplied([logo.0, logo.1], &logo.2);
+        let tex = ctx.load_texture(format!("logo-{id}"), img, egui::TextureOptions::LINEAR);
+        self.logos.insert(id.to_string(), tex.clone());
+        Some(tex)
+    }
+
     // ---------- collapsed and pop-up ----------
 
     /// Volume, Caps Lock and keyboard-language changes show a short indicator, unless a pop-up
@@ -1104,13 +1117,21 @@ impl App {
                 p.circle_stroke(badge, 20.0, Stroke::new(1.5_f32, BLUE_DARK));
                 headphone_icon(&p, badge, 8.0, WHITE);
             }
-            Kind::Notice(ref app, _) => {
-                // One calm line: the app's initial in a dot, who sent it, then (preview on) what they said.
+            Kind::Notice(ref app, ref id) => {
+                // One calm line: the app's logo (or its initial in a dot of its own colour), who sent
+                // it, then (preview on) what they said.
+                let (app, id) = (app.clone(), id.clone());
                 let y = r.center().y;
                 let dot = pos2(r.left() + 30.0, y);
-                p.circle_filled(dot, 12.0, GREEN);
-                let initial: String = app.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
-                p.text(dot, Align2::CENTER_CENTER, initial, bold(13.0), Color32::BLACK);
+                if let Some(tex) = self.logo_texture(ui.ctx(), &id) {
+                    // On a dark plate, so logos drawn for light backgrounds still show.
+                    p.rect_filled(Rect::from_center_size(dot, vec2(26.0, 26.0)), 7.0, Color32::from_gray(38));
+                    egui::Image::new(&tex).corner_radius(5).paint_at(ui, Rect::from_center_size(dot, vec2(20.0, 20.0)));
+                } else {
+                    p.circle_filled(dot, 12.0, app_color(&app));
+                    let initial: String = app.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
+                    p.text(dot, Align2::CENTER_CENTER, initial, bold(13.0), WHITE);
+                }
                 let x = dot.x + 22.0;
                 let room = r.right() - 22.0 - x;
                 let who = p.layout_no_wrap(ellipsize(&title, 28), bold(14.0), WHITE);
@@ -2866,6 +2887,17 @@ fn moon_icon(p: &egui::Painter, c: Pos2, r: f32) {
     p.circle_filled(c + vec2(r * 0.45, -r * 0.3), r * 0.9, BG);
 }
 
+/// A steady colour for an app without a logo, picked from its name, so each app keeps its own.
+fn app_color(app: &str) -> Color32 {
+    const COLORS: [Color32; 8] = [
+        Color32::from_rgb(37, 99, 235), Color32::from_rgb(22, 163, 74), Color32::from_rgb(147, 51, 234), Color32::from_rgb(219, 39, 119),
+        Color32::from_rgb(234, 88, 12), Color32::from_rgb(13, 148, 136), Color32::from_rgb(202, 138, 4), Color32::from_rgb(79, 70, 229),
+    ];
+    // FNV-1a: the same name gives the same colour on every run.
+    let h = app.bytes().fold(0x811c9dc5u32, |h, b| (h ^ b as u32).wrapping_mul(0x01000193));
+    COLORS[h as usize % COLORS.len()]
+}
+
 /// A small page of a calendar: a frame with a filled top band.
 fn calendar_icon(p: &egui::Painter, c: Pos2, col: Color32) {
     let r = Rect::from_center_size(c, vec2(20.0, 18.0));
@@ -3258,6 +3290,13 @@ fn demo_alert() -> Option<Alert> {
     let (title, body, kind) = match which.as_str() {
         "bluetooth" => ("AirBuds Pro", "Connected · 70%", Kind::Bluetooth(Some(70))),
         "notice" => ("Nusa", "Hello, Nusa 1.2!", Kind::Notice("Messages".into(), String::new())),
+        // An installed app's real logo (Windows Settings), as a notification from it would show.
+        "notice-logo" => {
+            let id = "windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel";
+            media::preload_logo(id);
+            ("Nhóm: TRI THỨC CHỈ ĐẠO CHUNG VÀ PHỐI HỢP", "Anh Tám (Phòng KH): Mai họp lúc 9h nhé mọi người, nhớ mang laptop", Kind::Notice("Zalo".into(), id.into()))
+        }
+        "notice-long" => ("Nhóm: TRI THỨC CHỈ ĐẠO CHUNG VÀ PHỐI HỢP", "Anh Tám (Phòng KH): Mai họp lúc 9h nhé mọi người, nhớ mang laptop", Kind::Notice("Zalo".into(), String::new())),
         "brightness" => ("Brightness", "", Kind::Hud(HudKind::Brightness, 0.6)),
         "welcome" => return Some(welcome_hint(false)),
         "taken" => return Some(taken_hint(tray::TAKEN_ASK | tray::TAKEN_OCR)),

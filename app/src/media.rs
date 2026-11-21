@@ -533,6 +533,60 @@ pub fn locate() -> Option<(f64, f64)> {
 /// A new Windows notification: app name, title, body text and the app's id (to open it).
 pub type Notice = (String, String, String, String);
 
+/// An app's logo for its notifications: (width, height, RGBA pixels).
+pub type Logo = Arc<(usize, usize, Vec<u8>)>;
+pub const LOGO_PX: u32 = 48; // twice the drawn size, so it stays sharp at 150% scaling
+
+// Logos by app id, read once per app; None = the app has no logo (or it couldn't be read).
+static LOGOS: Mutex<Option<std::collections::HashMap<String, Option<Logo>>>> = Mutex::new(None);
+
+/// The app's logo, once the notification watcher has read it.
+pub fn logo(id: &str) -> Option<Logo> {
+    LOGOS.lock().unwrap().as_ref()?.get(id).cloned().flatten()
+}
+
+/// Reads an installed app's logo by its id ahead of time (for screenshots, where no watcher runs).
+pub fn preload_logo(id: &str) {
+    let logo = windows::ApplicationModel::AppInfo::GetFromAppUserModelId(&id.into()).ok().and_then(|a| read_logo(&a));
+    LOGOS.lock().unwrap().get_or_insert_with(Default::default).insert(id.to_string(), logo);
+}
+
+fn read_logo(info: &windows::ApplicationModel::AppInfo) -> Option<Logo> {
+    use windows::{Foundation::Size, Storage::Streams::DataReader};
+    let px = LOGO_PX as f32;
+    let stream = info.DisplayInfo().ok()?.GetLogo(Size { Width: px, Height: px }).ok()?.OpenReadAsync().ok()?.get().ok()?;
+    let len = stream.Size().ok()? as u32;
+    if len == 0 || len > 4 << 20 {
+        return None;
+    }
+    let reader = DataReader::CreateDataReader(&stream).ok()?;
+    reader.LoadAsync(len).ok()?.get().ok()?;
+    let mut bytes = vec![0u8; len as usize];
+    reader.ReadBytes(&mut bytes).ok()?;
+    let mut img = image::load_from_memory(&bytes).ok()?.to_rgba8();
+    // Many logos sit small inside a large transparent square; keep just the drawn part (centred).
+    let (w, h) = img.dimensions();
+    let solid = |x: u32, y: u32| img.get_pixel(x, y)[3] > 24;
+    let (mut x0, mut y0, mut x1, mut y1) = (w, h, 0, 0);
+    for y in 0..h {
+        for x in 0..w {
+            if solid(x, y) {
+                (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x), y1.max(y));
+            }
+        }
+    }
+    if x1 < x0 {
+        return None; // nothing drawn
+    }
+    let side = (x1 - x0).max(y1 - y0) + 1;
+    let (cx, cy) = ((x0 + x1 + 1) / 2, (y0 + y1 + 1) / 2);
+    let mut square = image::RgbaImage::new(side, side);
+    image::imageops::overlay(&mut square, &img, side as i64 / 2 - cx as i64, side as i64 / 2 - cy as i64);
+    img = square;
+    let img = image::imageops::resize(&img, LOGO_PX, LOGO_PX, image::imageops::FilterType::Triangle);
+    Some(Arc::new((LOGO_PX as usize, LOGO_PX as usize, img.into_raw())))
+}
+
 /// New toast notifications, read every 3 s with UserNotificationListener like the original
 /// (0x14000d049): it asks for access once, waits while access is off, and treats ids it has not
 /// seen before as new. Ones already there at start are not shown.
@@ -566,6 +620,12 @@ pub fn notification_watch() -> Arc<Mutex<Vec<Notice>>> {
                     }
                     let title = texts.first().cloned().unwrap_or_else(|| app.clone());
                     let id = n.AppInfo().and_then(|a| a.AppUserModelId()).map(|s| s.to_string()).unwrap_or_default();
+                    // Each app's logo is read the first time it sends something, before the notice is shown.
+                    let known = LOGOS.lock().unwrap().as_ref().is_some_and(|m| m.contains_key(&id));
+                    if !known && !id.is_empty() {
+                        let logo = n.AppInfo().ok().and_then(|a| read_logo(&a));
+                        LOGOS.lock().unwrap().get_or_insert_with(Default::default).insert(id.clone(), logo);
+                    }
                     let mut q = shared.lock().unwrap();
                     if q.len() >= 16 {
                         q.remove(0); // only the latest is shown; don't keep message text piling up
@@ -580,6 +640,19 @@ pub fn notification_watch() -> Arc<Mutex<Vec<Notice>>> {
         }
     });
     out
+}
+
+#[cfg(test)]
+mod logo_tests {
+    /// A real app's logo, read the way notifications read theirs: cargo test live -- --ignored
+    #[test]
+    #[ignore]
+    fn live_logo_of_an_installed_app() {
+        let info = windows::ApplicationModel::AppInfo::GetFromAppUserModelId(&"windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel".into()).expect("Settings is installed");
+        let logo = super::read_logo(&info).expect("logo read");
+        assert_eq!((logo.0, logo.1, logo.2.len()), (48, 48, 48 * 48 * 4));
+        assert!(logo.2.chunks(4).any(|p| p[3] > 0), "logo is not blank");
+    }
 }
 
 #[cfg(test)]
