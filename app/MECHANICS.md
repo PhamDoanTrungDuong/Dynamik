@@ -289,3 +289,18 @@ of the larger "working set" is the graphics driver's shared DLLs.
 - Arrival: the icon pops from half size with a small overshoot (0.45 s) and a cyan-to-violet light
   runs along the bottom once (0.9 s).
 - Screenshots: `--popup notice`, `notice-long`, `notice-logo` (Windows Settings' real logo, +2).
+
+## Music, reworked
+- Cover: the session's Thumbnail, cut to a centred square, 156 px, read once per song. A song
+  without one is read again on its next few changes (up to 4), as Spotify sends it a moment late.
+  The drawn placeholder stays when the player gives none.
+- Text is cut by real width (to the lyrics column, or short of the page arrow).
+- Player: SourceAppUserModelId; its name from AppInfo, else the readable part of the id; its logo
+  as for notifications, on the cover's corner (else its initial in its own colour).
+- Colour: the cover's colourful pixels averaged (weighted by saturation squared) and lifted to 230;
+  used for the progress bar and the level bars while playing. A grey cover keeps white.
+- Collapsed while playing (no session counting down): small cover, clock, bars in the cover's
+  colour; it takes the mascot's place while the music plays.
+- Several players: the icon (ringed) switches to the next in Windows' list. The pick holds until
+  that player is gone, or is paused while Windows' own pick plays something else.
+- `--page 0 --demo` fills a screenshot with a made-up song and cover (no one's real music).

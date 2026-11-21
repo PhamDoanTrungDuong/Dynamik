@@ -29,8 +29,12 @@ hiện trạng thái và mở ra thành bảng công cụ nhỏ.*
 - Chỉ chạy một bản: mở exe lần nữa thì notch đang chạy sẽ mở ra, không tạo notch thứ hai.
 
 **Các trang** (sắp xếp lại hoặc ẩn trong Settings › Pages)
-- **Music**: bài đang phát từ mọi trình phát (Spotify, trình duyệt…), play/pause, chuyển bài, tua;
-  **lời bài hát chạy theo nhạc** từ LRCLIB, click một dòng để nhảy tới.
+- **Music**: bài đang phát từ trình phát hỗ trợ điều khiển nhạc của Windows (Spotify, trình duyệt…):
+  ảnh bìa thật, tên bài, ca sĩ – album, thời gian; icon app đang phát ở góc ảnh bìa (mở nhiều trình
+  phát thì bấm icon để chuyển). Play/pause, bài trước/sau, click hoặc kéo thanh tiến trình để tua;
+  thanh tiến trình và sóng nhạc lấy màu ảnh bìa. **Lời bài hát chạy theo nhạc** từ LRCLIB (bật/tắt
+  bằng nút lời trên trang, tắt hẳn ở Settings › Music), click một dòng để nhảy tới. Notch thu nhỏ khi
+  đang phát hiện ảnh bìa nhỏ, giờ và sóng nhạc.
 - **Pomodoro**: đồng hồ tập trung, đếm vòng, nghỉ ngắn/dài, pop-up khi hết giờ.
 - **Water**: nhắc uống nước theo khung giờ, dung tích bình, mục tiêu và biểu đồ theo giờ.
 - **Shelf**: kéo file vào notch, kéo ra thư mục hoặc ô chat; lịch sử clipboard.
