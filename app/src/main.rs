@@ -183,7 +183,7 @@ enum HudKind { Volume, Muted, Brightness, Caps, Lang }
 /// Asking Windows where this PC is, for "My location".
 #[derive(Clone, Copy, PartialEq)]
 enum Locating { Idle, Busy, Failed, Got(f64, f64) }
-enum Kind { Drink, Refill, TaskStart(usize), TaskEnd(usize), Event(u32), Hint, Prayer(u32, bool), Battery(u8, bool), Hud(HudKind, f32), Network(u8), Bluetooth(Option<u8>), Notice(String, String), Info, About }
+enum Kind { Drink, Refill, TaskStart(usize), TaskEnd(usize), Event(u32), Hint, Prayer(u32, bool), Battery(u8, bool), Hud(HudKind, f32), Network(u8), Bluetooth(Option<u8>), Notice(String, String, u32), Info, About }
 struct Alert { title: String, body: String, kind: Kind, at: Instant }
 
 /// A critically-tuned spring for one value.
@@ -929,10 +929,16 @@ impl App {
             self.recent.clear();
         }
         self.recent.truncate(RECENT_MAX);
+        let arrived = new.len() as u32;
         if let Some((app, title, body, id)) = new.into_iter().last() {
             if self.s.notifications && free {
                 let body = if self.s.notification_preview { body } else { String::new() };
-                self.alert = Some(Alert { title, body, kind: Kind::Notice(app, id), at: Instant::now() });
+                // The newest shows; "+N" counts the ones it covers (all still on the Today page).
+                let covered = match &self.alert {
+                    Some(Alert { kind: Kind::Notice(_, _, more), .. }) => more + 1,
+                    _ => 0,
+                };
+                self.alert = Some(Alert { title, body, kind: Kind::Notice(app, id, covered + arrived - 1), at: Instant::now() });
             }
         }
         // A network change shows once it has held for 1.5 s, like the original's debounce.
@@ -1121,7 +1127,7 @@ impl App {
                 p.circle_stroke(badge, 20.0, Stroke::new(1.5_f32, BLUE_DARK));
                 headphone_icon(&p, badge, 8.0, WHITE);
             }
-            Kind::Notice(ref app, ref id) => {
+            Kind::Notice(ref app, ref id, more) => {
                 // One calm line: the app's logo (or its initial in a dot of its own colour), who sent
                 // it, then (preview on) what they said.
                 let (app, id) = (app.clone(), id.clone());
@@ -1139,18 +1145,26 @@ impl App {
                 // Line 1: who sent it, with the app's name dim on the right (a group's name alone
                 // doesn't say which app). Line 2, when there is one: what they said, full width.
                 let x = dot.x + 22.0;
-                let right = r.right() - 20.0;
+                let mut right = r.right() - 20.0;
+                let y1 = if body.is_empty() { y } else { y - 10.0 };
+                if more > 0 {
+                    // How many more came in while this one showed: a small pill at line 1's end.
+                    let tag = p.layout_no_wrap(format!("+{more}"), bold(10.0), WHITE);
+                    let badge = Rect::from_min_size(pos2(right - tag.size().x - 10.0, y1 - 7.5), vec2(tag.size().x + 10.0, 15.0));
+                    p.rect_filled(badge, 7.5, BLUE);
+                    p.galley(badge.center() - tag.size() / 2.0, tag, WHITE);
+                    right = badge.left() - 8.0;
+                }
                 let name = p.layout_no_wrap(app.clone(), reg(11.0), DIM);
                 let nw = if app.is_empty() || app == title { 0.0 } else { name.size().x + 10.0 };
                 let two = !body.is_empty();
-                let y1 = if two { y - 10.0 } else { y };
                 let who = fit_line(&p, &title, bold(14.0), WHITE, right - x - nw);
                 p.galley(pos2(x, y1 - who.size().y / 2.0), who, WHITE);
                 if nw > 0.0 {
                     p.galley(pos2(right - name.size().x, y1 - name.size().y / 2.0), name, DIM);
                 }
                 if two {
-                    let said = fit_line(&p, &body, reg(13.0), DIM, right - x);
+                    let said = fit_line(&p, &body, reg(13.0), DIM, r.right() - 20.0 - x);
                     p.galley(pos2(x, y + 10.0 - said.size().y / 2.0), said, DIM);
                 }
             }
@@ -2454,7 +2468,7 @@ impl eframe::App for App {
                 self.settings_open = !self.settings_open;
             }
             let notice_app = self.alert.as_ref().and_then(|a| match &a.kind {
-                Kind::Notice(_, id) if !id.is_empty() && !id.chars().any(|c| c == '"' || c.is_control()) => Some(id.clone()),
+                Kind::Notice(_, id, _) if !id.is_empty() && !id.chars().any(|c| c == '"' || c.is_control()) => Some(id.clone()),
                 _ => None,
             });
             if !self.expanded && resp.clicked() && notice_app.is_some() {
@@ -3316,14 +3330,14 @@ fn demo_alert() -> Option<Alert> {
     let which = args.iter().position(|a| a == "--popup").and_then(|i| args.get(i + 1))?;
     let (title, body, kind) = match which.as_str() {
         "bluetooth" => ("AirBuds Pro", "Connected · 70%", Kind::Bluetooth(Some(70))),
-        "notice" => ("Nusa", "Hello, Nusa 1.2!", Kind::Notice("Messages".into(), String::new())),
+        "notice" => ("Nusa", "Hello, Nusa 1.2!", Kind::Notice("Messages".into(), String::new(), 0)),
         // An installed app's real logo (Windows Settings), as a notification from it would show.
         "notice-logo" => {
             let id = "windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel";
             media::preload_logo(id);
-            ("Nhóm: TRI THỨC CHỈ ĐẠO CHUNG VÀ PHỐI HỢP", "Anh Tám (Phòng KH): Mai họp lúc 9h nhé mọi người, nhớ mang laptop", Kind::Notice("Zalo".into(), id.into()))
+            ("Nhóm: TRI THỨC CHỈ ĐẠO CHUNG VÀ PHỐI HỢP", "Anh Tám (Phòng KH): Mai họp lúc 9h nhé mọi người, nhớ mang laptop", Kind::Notice("Zalo".into(), id.into(), 2))
         }
-        "notice-long" => ("Nhóm: TRI THỨC CHỈ ĐẠO CHUNG VÀ PHỐI HỢP", "Anh Tám (Phòng KH): Mai họp lúc 9h nhé mọi người, nhớ mang laptop", Kind::Notice("Zalo".into(), String::new())),
+        "notice-long" => ("Nhóm: TRI THỨC CHỈ ĐẠO CHUNG VÀ PHỐI HỢP", "Anh Tám (Phòng KH): Mai họp lúc 9h nhé mọi người, nhớ mang laptop", Kind::Notice("Zalo".into(), String::new(), 0)),
         "brightness" => ("Brightness", "", Kind::Hud(HudKind::Brightness, 0.6)),
         "welcome" => return Some(welcome_hint(false)),
         "taken" => return Some(taken_hint(tray::TAKEN_ASK | tray::TAKEN_OCR)),
