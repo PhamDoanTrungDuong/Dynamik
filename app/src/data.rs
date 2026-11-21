@@ -129,6 +129,7 @@ pub struct Settings {
     pub hide_fullscreen: bool,
     pub welcomed: bool, // the first-start hint has been shown
     pub auto_next: bool, // Pomodoro: the next part starts by itself
+    pub focus_quiet: bool, // notifications wait while focusing
     pub lyrics: bool,
     pub hud_volume: bool,
     pub hud_caps: bool,
@@ -218,6 +219,7 @@ impl Settings {
             hide_fullscreen: get(&m, "hide_fullscreen", true),
             welcomed: get(&m, "welcomed", false),
             auto_next: get(&m, "auto_next", false),
+            focus_quiet: get(&m, "focus_quiet", false),
             lyrics: get(&m, "lyrics", true),
             hud_volume: get(&m, "hud_volume", true),
             hud_caps: get(&m, "hud_caps", true),
@@ -283,6 +285,7 @@ impl Settings {
             format!("hide_fullscreen={}", s.hide_fullscreen),
             format!("welcomed={}", s.welcomed),
             format!("auto_next={}", s.auto_next),
+            format!("focus_quiet={}", s.focus_quiet),
             format!("lyrics={}", s.lyrics),
             format!("hud_volume={}", s.hud_volume),
             format!("hud_caps={}", s.hud_caps),

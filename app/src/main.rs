@@ -274,6 +274,7 @@ struct App {
     rounds: u32,
     focus_log: BTreeMap<NaiveDate, u32>,
     rounds_day: NaiveDate, // the day `rounds` counts for
+    held_notice: Option<(media::Notice, u32)>, // a notification kept back during quiet focus, and how many more
     focus_acc: f64,
     last_tick: Instant,
     // shelf
@@ -406,7 +407,7 @@ impl App {
             w: Spring { x: start.x, v: 0.0 }, h: Spring { x: start.y, v: 0.0 }, content: Spring { x: 0.0, v: 0.0 }, spring: SPRING, last_target: start,
             tasks: load_tasks(), form: None, todo_edit: false,
             water_day, drank, in_bottle, hours, fired, water_snooze: None, water_settings: false, reset_armed: None,
-            mode: Mode::Focus, left, running: false, rounds: 0, rounds_day: now.date(), focus_log, focus_acc: 0.0, last_tick: Instant::now(),
+            mode: Mode::Focus, left, running: false, rounds: 0, rounds_day: now.date(), held_notice: None, focus_log, focus_acc: 0.0, last_tick: Instant::now(),
             shelf, shelf_view: ShelfView::Files, clips, clipboard, last_clip, copied: None,
             battery: battery(), prayer_fired: HashSet::new(), hidden: false, media: demo_music(media::Media::start(s.lyrics, live), !live && page == 0), lyrics_open: false, volume: media::volume_watch(), last_volume: None, last_caps: caps_lock(), last_lang: input_lang(), network: media::network_watch(), last_network: None,
             bluetooth: if live { media::bluetooth_watch() } else { Default::default() }, last_headsets: None,
@@ -984,16 +985,29 @@ impl App {
         }
         self.recent.truncate(RECENT_MAX);
         let arrived = new.len() as u32;
-        if let Some((app, title, body, id)) = new.into_iter().last() {
-            if self.s.notifications && free {
-                let body = if self.s.notification_preview { body } else { String::new() };
-                // The newest shows; "+N" counts the ones it covers (all still on the Today page).
-                let covered = match &self.alert {
-                    Some(Alert { kind: Kind::Notice(_, _, more), .. }) => more + 1,
-                    _ => 0,
-                };
-                self.alert = Some(Alert { title, body, kind: Kind::Notice(app, id, covered + arrived - 1), at: Instant::now() });
+        // While focusing (with "quiet focus" on) they wait, and the newest shows once focus ends.
+        let quiet = self.s.focus_quiet && self.running && self.mode == Mode::Focus;
+        let mut show = None;
+        if let Some(last) = new.into_iter().last().filter(|_| self.s.notifications) {
+            let waiting = self.held_notice.take().map_or(0, |(_, n)| n + 1);
+            if quiet {
+                self.held_notice = Some((last, waiting + arrived - 1));
+            } else if free {
+                show = Some((last, waiting + arrived - 1));
+            } else if waiting > 0 {
+                self.held_notice = Some((last, waiting + arrived - 1)); // still waiting behind a pop-up
             }
+        } else if !quiet && self.alert.is_none() {
+            show = self.held_notice.take();
+        }
+        if let Some(((app, title, body, id), more)) = show {
+            let body = if self.s.notification_preview { body } else { String::new() };
+            // The newest shows; "+N" counts the ones it covers (all still on the Today page).
+            let covered = match &self.alert {
+                Some(Alert { kind: Kind::Notice(_, _, more), .. }) => more + 1,
+                _ => 0,
+            };
+            self.alert = Some(Alert { title, body, kind: Kind::Notice(app, id, covered + more), at: Instant::now() });
         }
         // A network change shows once it has held for 1.5 s, like the original's debounce.
         let net = self.network.lock().unwrap().clone();
@@ -2285,6 +2299,7 @@ impl App {
                     number(ui, "Short break", &mut s.short_break, 1..=60, " min");
                     number(ui, "Long break", &mut s.long_break, 1..=60, " min");
                     switch_row(ui, "Go on by itself — the next break or focus starts without a click", &mut s.auto_next);
+                    switch_row(ui, "Quiet focus — notifications wait until focus ends", &mut s.focus_quiet);
                 });
                 card(ui, "To-do reminders", |ui| {
                     switch_row(ui, "When a task starts", &mut s.todo_start);
