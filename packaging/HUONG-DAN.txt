@@ -1,0 +1,21 @@
+My Notch — notch kiểu Dynamic Island ở mép trên màn hình (Windows 10/11, 64-bit)
+
+CÀI ĐẶT
+1. Giải nén cả thư mục ra (đừng chạy thẳng trong file zip).
+2. Bấm đúp install.cmd. Không cần quyền admin; app được chép vào
+   %LOCALAPPDATA%\Programs\MyNotch và có lối tắt "My Notch" trong Start Menu.
+3. Nếu Windows hiện "Windows protected your PC": bấm "More info" → "Run anyway"
+   (app chưa có chữ ký số nên Windows cảnh báo với file tải về).
+
+DÙNG
+- Rê chuột lên notch ở giữa mép trên để mở; bấm trái icon ở khay hệ thống cũng mở.
+- Bấm phải icon ở khay: Settings / Quit.
+- Tự chạy cùng Windows: Settings → bật "Start with Windows".
+
+GỠ CÀI ĐẶT
+- Chạy %LOCALAPPDATA%\Programs\MyNotch\uninstall.cmd.
+  Cài đặt riêng của bạn nằm ở %LOCALAPPDATA%\MyNotch, xoá thư mục đó nếu muốn xoá sạch.
+
+LƯU Ý
+- Để hiện thông báo Caps Lock / đổi ngôn ngữ, app theo dõi các phím đó (chỉ xem mã phím,
+  không ghi lại gì). Một số phần mềm diệt virus có thể cảnh báo vì việc này.

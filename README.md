@@ -59,6 +59,10 @@ cargo test --release
 Icon của exe được nhúng bằng `windres` (ví dụ từ LLVM-MinGW) nếu có trong PATH; không có thì exe vẫn
 build được, chỉ thiếu icon. Các mẫu icon nằm trong `icon-options/`.
 
+Đóng gói bản phát hành: chép `app/target/release/notch.exe` thành `MyNotch.exe` vào một thư mục
+`MyNotch/` cùng ba file trong `packaging/` (`install.cmd`, `uninstall.cmd`, `HUONG-DAN.txt`), rồi nén
+thư mục đó thành `MyNotch-<version>-windows-x64.zip`.
+
 ## Mạng và quyền riêng tư
 
 App chạy hoàn toàn trên máy, trừ các tính năng sau (đều miễn phí, không cần khóa, chỉ gọi khi dùng):
