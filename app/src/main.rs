@@ -72,7 +72,9 @@ const NET_SETTLE_SECS: f32 = 1.5;
 const NET_POPUP_SECS: f32 = 3.2;
 // Bluetooth headset and mirrored-notification pop-ups: how long they stay is estimated (not found).
 const BT_POPUP_SECS: f32 = 3.2;
-const NOTICE_POPUP_SECS: f32 = 4.5;
+const NOTICE_POPUP_SECS: f32 = 4.5; // a short notification; longer ones get more (notice_secs)
+const NOTICE_MAX_SECS: f32 = 8.0;
+const NOTICE_AFTER_HOVER_SECS: f32 = 1.0; // after the pointer leaves a notification it may close
 const HUD: Vec2 = vec2(346.0, 64.0); // state 4 of 0x140056ff1 is 310 x 60 plus the pill's drawn extra
 
 // Page order of the original (its page dots): Music first, Widgets last.
@@ -685,7 +687,8 @@ impl App {
         if self.alert.as_ref().is_some_and(|a| match a.kind {
             Kind::Battery(..) => a.at.elapsed().as_secs_f32() > BATTERY_POPUP_SECS,
             Kind::Bluetooth(_) => a.at.elapsed().as_secs_f32() > BT_POPUP_SECS,
-            Kind::Notice(..) => a.at.elapsed().as_secs_f32() > NOTICE_POPUP_SECS,
+            // Longer messages stay longer, and none goes while the pointer rests on it.
+            Kind::Notice(..) => a.at.elapsed().as_secs_f32() > notice_secs(&a.title, &a.body) && self.last_inside.elapsed().as_secs_f32() > NOTICE_AFTER_HOVER_SECS,
             Kind::About => a.at.elapsed().as_secs_f32() > ABOUT_SECS,
             Kind::Hint => a.at.elapsed().as_secs_f32() > HINT_SECS,
             Kind::Prayer(_, early) => a.at.elapsed().as_secs_f32() > if early { PRAYER_EARLY_SECS } else { PRAYER_POPUP_SECS },
@@ -2896,6 +2899,13 @@ fn moon_icon(p: &egui::Painter, c: Pos2, r: f32) {
     p.circle_filled(c + vec2(r * 0.45, -r * 0.3), r * 0.9, BG);
 }
 
+/// How long a notification shows: 4.5 s, plus a second for every 30 characters past the first
+/// 40 (about reading speed), up to 8 s.
+fn notice_secs(title: &str, body: &str) -> f32 {
+    let chars = (title.chars().count() + body.chars().count()) as f32;
+    (NOTICE_POPUP_SECS + (chars - 40.0).max(0.0) / 30.0).min(NOTICE_MAX_SECS)
+}
+
 /// `text` on one line no wider than `width`, ending in "…" when it is cut (cut by real width,
 /// so Vietnamese and Chinese text fill the line too).
 fn fit_line(p: &egui::Painter, text: &str, font: FontId, col: Color32, width: f32) -> std::sync::Arc<egui::Galley> {
@@ -3492,6 +3502,14 @@ fn set_startup(on: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn longer_notifications_stay_longer() {
+        assert_eq!(notice_secs("Mai", "Ok"), NOTICE_POPUP_SECS);
+        let long = notice_secs("Nhóm: TRI THỨC CHỈ ĐẠO CHUNG", "Anh Tám (Phòng KH): Mai họp lúc 9h nhé mọi người, nhớ mang laptop");
+        assert!(long > NOTICE_POPUP_SECS + 1.0 && long < NOTICE_MAX_SECS, "{long}");
+        assert_eq!(notice_secs(&"x".repeat(500), ""), NOTICE_MAX_SECS);
+    }
+
     #[test]
     fn blink_closes_smoothly() {
         assert_eq!(blink_open(BLINK_MS), 1.0);
