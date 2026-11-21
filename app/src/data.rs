@@ -67,7 +67,10 @@ pub struct Settings {
     pub from: u16,
     pub until: u16,
     pub prayer: bool,
-    pub prayer_city: usize,
+    pub prayer_city: usize, // index into prayer's City list (Indonesia, world, then My location)
+    pub prayer_method: usize, // 0: the place's usual method, else index + 1 into prayer::METHODS
+    pub prayer_lat: f64, // My location, from Windows when asked
+    pub prayer_lon: f64,
     pub prayer_reminder: bool,
     pub prayer_early: bool,
     pub prayer_pause_media: bool,
@@ -89,12 +92,35 @@ pub struct Settings {
     pub notifications: bool,
     pub notification_preview: bool,
     pub mascot: bool,
+    pub app_icon: usize, // index into tray::ICON_NAMES
+    pub language: usize, // index into i18n::NAMES
     pub widget_city1: usize,
     pub widget_city2: usize,
     pub widget_event: usize,
     pub widget_left: usize,
     pub widget_right: usize,
     pub week_monday: bool,
+    pub show_clock: bool,         // the date and time in the notch
+    pub page_order: Vec<usize>,   // every page id once, in the order they are paged through
+    pub pages_hidden: Vec<usize>, // page ids left out
+}
+
+/// Pages the notch has (main.rs PAGES).
+pub const PAGE_COUNT: usize = 8;
+
+fn ids(m: &BTreeMap<String, String>, k: &str) -> Vec<usize> {
+    m.get(k).map(|v| v.split(',').filter_map(|x| x.trim().parse().ok()).collect()).unwrap_or_default()
+}
+
+/// The saved order when it lists each page exactly once, else the usual order.
+fn page_order(saved: Vec<usize>) -> Vec<usize> {
+    let mut sorted = saved.clone();
+    sorted.sort_unstable();
+    if sorted == (0..PAGE_COUNT).collect::<Vec<_>>() { saved } else { (0..PAGE_COUNT).collect() }
+}
+
+fn join(ids: &[usize]) -> String {
+    ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",")
 }
 
 impl Settings {
@@ -108,7 +134,7 @@ impl Settings {
         let mut s = Settings {
             startup: get(&m, "startup", false),
             size: get(&m, "size", 0usize).min(3),
-            minimal: get(&m, "minimal", false),
+            minimal: get(&m, "minimal", true), // rests as the original's thin peek bar unless turned off
             open_click: get(&m, "open_click", false),
             sound: get(&m, "sound", true),
             status_ring: get(&m, "status_ring", 0usize).min(2),
@@ -125,7 +151,10 @@ impl Settings {
             from: get(&w, "start", 480u16).min(FROM_MAX),
             until: get(&w, "end", 1020u16),
             prayer: get(&m, "prayer", false),
-            prayer_city: get(&m, "prayer_city", crate::prayer::DEFAULT_CITY).min(crate::prayer::CITIES.len() - 1),
+            prayer_city: get(&m, "prayer_city", crate::prayer::DEFAULT_CITY).min(crate::prayer::place_count() - 1),
+            prayer_method: get(&m, "prayer_method", 0usize).min(crate::prayer::METHODS.len()),
+            prayer_lat: get(&m, "prayer_lat", 0.0f64).clamp(-90.0, 90.0),
+            prayer_lon: get(&m, "prayer_lon", 0.0f64).clamp(-180.0, 180.0),
             prayer_reminder: get(&m, "prayer_reminder", true),
             prayer_early: get(&m, "prayer_early", false),
             // Both off by default, as in the original's settings table (0x1400e1320).
@@ -148,13 +177,18 @@ impl Settings {
             popup_bluetooth: get(&m, "popup_bluetooth", true),
             notifications: get(&m, "notifications", true),
             notification_preview: get(&m, "notification_preview", false),
-            mascot: get(&m, "mascot", false),
+            mascot: get(&m, "mascot", true),
+            app_icon: get(&m, "app_icon", 0usize),
+            language: Some(get(&m, "language", crate::i18n::system_default())).filter(|&l| l < crate::i18n::NAMES.len()).unwrap_or_else(crate::i18n::system_default),
             widget_city1: get(&m, "widget_city1", 5usize),
             widget_city2: get(&m, "widget_city2", 13usize),
             widget_event: get(&m, "widget_event", 1usize),
             widget_left: get(&m, "widget_left", 0usize),
             widget_right: get(&m, "widget_right", 1usize),
             week_monday: get(&m, "week_monday", false),
+            show_clock: get(&m, "show_clock", true),
+            page_order: page_order(ids(&m, "page_order")),
+            pages_hidden: ids(&m, "pages_hidden").into_iter().filter(|&i| i < PAGE_COUNT).collect(),
         };
         // Same clamp as the original's loader (0x14004aa9e): until within [from + 60, 24:00].
         s.until = s.until.max(s.from + MIN_SPAN).min(UNTIL_MAX);
@@ -178,6 +212,9 @@ impl Settings {
             format!("snooze={}", s.snooze),
             format!("prayer={}", s.prayer),
             format!("prayer_city={}", s.prayer_city),
+            format!("prayer_method={}", s.prayer_method),
+            format!("prayer_lat={}", s.prayer_lat),
+            format!("prayer_lon={}", s.prayer_lon),
             format!("prayer_reminder={}", s.prayer_reminder),
             format!("prayer_early={}", s.prayer_early),
             format!("prayer_pause_media={}", s.prayer_pause_media),
@@ -203,12 +240,17 @@ impl Settings {
             format!("notifications={}", s.notifications),
             format!("notification_preview={}", s.notification_preview),
             format!("mascot={}", s.mascot),
+            format!("app_icon={}", s.app_icon),
+            format!("language={}", s.language),
             format!("widget_city1={}", s.widget_city1),
             format!("widget_city2={}", s.widget_city2),
             format!("widget_event={}", s.widget_event),
             format!("widget_left={}", s.widget_left),
             format!("widget_right={}", s.widget_right),
             format!("week_monday={}", s.week_monday),
+            format!("show_clock={}", s.show_clock),
+            format!("page_order={}", join(&s.page_order)),
+            format!("pages_hidden={}", join(&s.pages_hidden)),
         ];
         write("settings.txt", &lines.join("\n"));
     }
@@ -302,6 +344,18 @@ pub fn unesc(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn page_order_keeps_only_a_full_ordering() {
+        assert_eq!(page_order(vec![7, 0, 1, 2, 3, 4, 5, 6]), vec![7, 0, 1, 2, 3, 4, 5, 6]);
+        let usual: Vec<usize> = (0..PAGE_COUNT).collect();
+        assert_eq!(page_order(vec![0, 1, 1, 2, 3, 4, 5, 6]), usual); // a page twice, one missing
+        assert_eq!(page_order(vec![0, 1, 2]), usual);
+        assert_eq!(page_order(vec![]), usual);
+        let s = Settings::from_text("page_order=3,0,1,2,4,5,6,7\npages_hidden=2,9", "");
+        assert_eq!(s.page_order[0], 3);
+        assert_eq!(s.pages_hidden, vec![2]); // 9 is no page
+    }
+
     #[test]
     fn escape_round_trip() {
         let s = "a\\b\nc|d";

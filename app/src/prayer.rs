@@ -2,6 +2,8 @@
 //! angles (Subuh 20°, Isya 18°, sunset 0.833°, Shafi'i Ashar), two refinement passes, then
 //! minutes = ceil(time*60 + 2 - 1e-6). City table copied from the original's data (0x1400df470).
 
+use crate::Dst;
+
 /// (province, city, latitude, longitude, UTC offset hours).
 pub const CITIES: &[(&str, &str, f64, f64, f64)] = &[
     ("Aceh", "Banda Aceh", 5.55, 95.32, 7.0),
@@ -90,12 +92,113 @@ pub const CITIES: &[(&str, &str, f64, f64, f64)] = &[
     ("Papua Selatan", "Merauke", -8.49, 140.40, 9.0),
 ];
 
+/// Places outside Indonesia: (country, city, latitude, longitude, usual method, standard UTC
+/// offset, summer-time rule). Their times are in that city's own clock, as people there read them.
+pub const WORLD: &[(&str, &str, f64, f64, usize, f64, Dst)] = &[
+    ("Việt Nam", "Hà Nội", 21.03, 105.85, MWL, 7.0, Dst::No),
+    ("Việt Nam", "TP Hồ Chí Minh", 10.82, 106.63, MWL, 7.0, Dst::No),
+    ("Việt Nam", "Đà Nẵng", 16.05, 108.20, MWL, 7.0, Dst::No),
+    ("Việt Nam", "Cần Thơ", 10.03, 105.78, MWL, 7.0, Dst::No),
+    ("Việt Nam", "Châu Đốc", 10.70, 105.12, MWL, 7.0, Dst::No),
+    ("Malaysia", "Kuala Lumpur", 3.14, 101.69, JAKIM, 8.0, Dst::No),
+    ("Singapore", "Singapore", 1.35, 103.82, MUIS, 8.0, Dst::No),
+    ("Brunei", "Bandar Seri Begawan", 4.90, 114.94, JAKIM, 8.0, Dst::No),
+    ("Thailand", "Bangkok", 13.75, 100.50, MWL, 7.0, Dst::No),
+    ("Philippines", "Manila", 14.60, 120.98, MWL, 8.0, Dst::No),
+    ("Saudi Arabia", "Mecca", 21.42, 39.83, UMM_AL_QURA, 3.0, Dst::No),
+    ("Saudi Arabia", "Medina", 24.47, 39.61, UMM_AL_QURA, 3.0, Dst::No),
+    ("UAE", "Dubai", 25.20, 55.27, GULF, 4.0, Dst::No),
+    ("Egypt", "Cairo", 30.04, 31.24, EGYPT, 2.0, Dst::No),
+    ("Türkiye", "Istanbul", 41.01, 28.98, DIYANET, 3.0, Dst::No),
+    ("Pakistan", "Karachi", 24.86, 67.01, KARACHI, 5.0, Dst::No),
+    ("Bangladesh", "Dhaka", 23.81, 90.41, KARACHI, 6.0, Dst::No),
+    ("India", "New Delhi", 28.61, 77.21, KARACHI, 5.5, Dst::No),
+    ("China", "Beijing", 39.90, 116.40, MWL, 8.0, Dst::No),
+    ("Japan", "Tokyo", 35.68, 139.69, MWL, 9.0, Dst::No),
+    ("Korea", "Seoul", 37.57, 126.98, MWL, 9.0, Dst::No),
+    ("Australia", "Sydney", -33.87, 151.21, MWL, 10.0, Dst::Au),
+    ("United Kingdom", "London", 51.51, -0.13, MWL, 0.0, Dst::Eu),
+    ("France", "Paris", 48.86, 2.35, UOIF, 1.0, Dst::Eu),
+    ("Germany", "Berlin", 52.52, 13.40, MWL, 1.0, Dst::Eu),
+    ("United States", "New York", 40.71, -74.01, ISNA, -5.0, Dst::Us),
+    ("United States", "Los Angeles", 34.05, -118.24, ISNA, -8.0, Dst::Us),
+    ("Canada", "Toronto", 43.65, -79.38, ISNA, -5.0, Dst::Us),
+];
+
+/// How a country's authority sets the times: Subuh and Isya by the sun's angle below the horizon
+/// (or Isya some minutes after Maghrib), Ashar by shadow length (1 Shafi'i, 2 Hanafi), and the
+/// minutes of caution added to each.
+pub struct Method {
+    pub name: &'static str,
+    fajr: f64,
+    isha: Isha,
+    asr_shadow: f64,
+    safety_min: f64,
+}
+
+enum Isha {
+    Angle(f64),
+    AfterMaghrib(f64),
+}
+
+pub const KEMENAG: usize = 0;
+pub const MWL: usize = 1;
+pub const ISNA: usize = 2;
+pub const EGYPT: usize = 3;
+pub const UMM_AL_QURA: usize = 4;
+pub const KARACHI: usize = 5;
+pub const JAKIM: usize = 6;
+pub const MUIS: usize = 7;
+pub const DIYANET: usize = 8;
+pub const UOIF: usize = 9;
+pub const GULF: usize = 10;
+
+pub const METHODS: &[Method] = &[
+    // The original's: Kemenag angles with a 2-minute ihtiyat (0x140031c46).
+    Method { name: "Kemenag RI (Indonesia)", fajr: 20.0, isha: Isha::Angle(18.0), asr_shadow: 1.0, safety_min: 2.0 },
+    Method { name: "Muslim World League", fajr: 18.0, isha: Isha::Angle(17.0), asr_shadow: 1.0, safety_min: 0.0 },
+    Method { name: "ISNA (North America)", fajr: 15.0, isha: Isha::Angle(15.0), asr_shadow: 1.0, safety_min: 0.0 },
+    Method { name: "Egyptian General Authority", fajr: 19.5, isha: Isha::Angle(17.5), asr_shadow: 1.0, safety_min: 0.0 },
+    Method { name: "Umm al-Qura (Makkah)", fajr: 18.5, isha: Isha::AfterMaghrib(90.0), asr_shadow: 1.0, safety_min: 0.0 },
+    Method { name: "University of Karachi (Hanafi)", fajr: 18.0, isha: Isha::Angle(18.0), asr_shadow: 2.0, safety_min: 0.0 },
+    Method { name: "JAKIM (Malaysia)", fajr: 20.0, isha: Isha::Angle(18.0), asr_shadow: 1.0, safety_min: 2.0 },
+    Method { name: "MUIS (Singapore)", fajr: 20.0, isha: Isha::Angle(18.0), asr_shadow: 1.0, safety_min: 2.0 },
+    Method { name: "Diyanet (Türkiye)", fajr: 18.0, isha: Isha::Angle(17.0), asr_shadow: 1.0, safety_min: 0.0 },
+    Method { name: "UOIF (France)", fajr: 12.0, isha: Isha::Angle(12.0), asr_shadow: 1.0, safety_min: 0.0 },
+    Method { name: "Gulf region", fajr: 19.5, isha: Isha::AfterMaghrib(90.0), asr_shadow: 1.0, safety_min: 0.0 },
+];
+
+/// Entries in the City list: the Indonesian cities, the world, then "My location" last.
+pub fn place_count() -> usize {
+    CITIES.len() + WORLD.len() + 1
+}
+
+pub fn here_index() -> usize {
+    place_count() - 1
+}
+
+/// (region, city) for the City list; "My location" is named by the caller.
+pub fn place_name(i: usize) -> (&'static str, &'static str) {
+    match i {
+        i if i < CITIES.len() => (CITIES[i].0, CITIES[i].1),
+        i if i < CITIES.len() + WORLD.len() => (WORLD[i - CITIES.len()].0, WORLD[i - CITIES.len()].1),
+        _ => ("", ""),
+    }
+}
+
+/// The method a place usually follows: Kemenag in Indonesia, the country's own elsewhere, and
+/// the Muslim World League for "My location".
+pub fn usual_method(i: usize) -> usize {
+    match i {
+        i if i < CITIES.len() => KEMENAG,
+        i if i < CITIES.len() + WORLD.len() => WORLD[i - CITIES.len()].4,
+        _ => MWL,
+    }
+}
+
 pub const NAMES: [&str; 5] = ["Subuh", "Dzuhur", "Ashar", "Maghrib", "Isya"];
 pub const DEFAULT_CITY: usize = 17; // Jakarta, settings default `prayer_city`
-const FAJR_ANGLE: f64 = 20.0;
 const SUNSET_ANGLE: f64 = 0.833;
-const ISHA_ANGLE: f64 = 18.0;
-const SAFETY_MIN: f64 = 2.0;
 const GUESS_HOURS: [f64; 5] = [5.0, 12.0, 13.0, 18.0, 18.0];
 
 fn julian(y: i32, m: u32, d: u32) -> f64 {
@@ -117,14 +220,36 @@ fn sun(jd: f64) -> (f64, f64) {
     ((e.sin() * l.sin()).asin(), eqt - 24.0 * (eqt / 24.0).round())
 }
 
-/// Minutes after local midnight for Subuh, Dzuhur, Ashar, Maghrib, Isya on that date in city `idx`
-/// (before the per-prayer adjustments).
-pub fn times(date: chrono::NaiveDate, idx: usize) -> [u32; 5] {
+/// Minutes after local midnight for Subuh, Dzuhur, Ashar, Maghrib, Isya (before the per-prayer
+/// adjustments) at place `idx` of the City list (`here` is "My location"'s latitude and longitude) with `method`
+/// (None: the place's usual one). "My location" is in this PC's clock, other places in their own.
+pub fn times_for(date: chrono::NaiveDate, idx: usize, here: (f64, f64), method: Option<usize>) -> [u32; 5] {
+    let m = &METHODS[method.unwrap_or_else(|| usual_method(idx)).min(METHODS.len() - 1)];
+    let (lat, lng, tz) = match idx {
+        i if i < CITIES.len() => (CITIES[i].2, CITIES[i].3, CITIES[i].4),
+        i if i < CITIES.len() + WORLD.len() => {
+            let w = WORLD[i - CITIES.len()];
+            let noon_utc = date.and_hms_opt(12, 0, 0).unwrap() - chrono::Duration::minutes((w.5 * 60.0) as i64);
+            (w.2, w.3, w.5 + if crate::summer(w.6, w.5, noon_utc) { 1.0 } else { 0.0 })
+        }
+        _ => (here.0, here.1, pc_offset_hours(date)),
+    };
+    times_at(date, lat, lng, tz, m)
+}
+
+/// This PC's UTC offset at noon that day, so summer time is right on the day it applies.
+fn pc_offset_hours(date: chrono::NaiveDate) -> f64 {
+    use chrono::{Local, Offset, TimeZone};
+    let noon = date.and_hms_opt(12, 0, 0).unwrap();
+    Local.from_local_datetime(&noon).single().map_or(0.0, |t| t.offset().fix().local_minus_utc() as f64 / 3600.0)
+}
+
+fn times_at(date: chrono::NaiveDate, lat: f64, lng: f64, tz: f64, m: &Method) -> [u32; 5] {
     use chrono::Datelike;
-    let (_, _, lat, lng, tz) = CITIES[idx.min(CITIES.len() - 1)];
     let jd = julian(date.year(), date.month(), date.day()) - lng / (15.0 * 24.0);
     let phi = lat.to_radians();
     let mut t = GUESS_HOURS;
+    let mut sunrise = 6.0;
     for _ in 0..2 {
         let p = t.map(|h| h / 24.0);
         let noon = |frac: f64| (12.0 - sun(jd + frac).1).rem_euclid(24.0);
@@ -134,23 +259,41 @@ pub fn times(date: chrono::NaiveDate, idx: usize) -> [u32; 5] {
             noon(frac) + if before_noon { -h } else { h }
         };
         let (decl_asr, _) = sun(jd + p[2]);
-        let asr_angle = -(1.0 / (1.0 + (phi - decl_asr).abs().tan())).atan().to_degrees();
+        let asr_angle = -(1.0 / (m.asr_shadow + (phi - decl_asr).abs().tan())).atan().to_degrees();
+        let maghrib = angle_time(SUNSET_ANGLE, p[3], false);
+        sunrise = angle_time(SUNSET_ANGLE, p[0], true);
         t = [
-            angle_time(FAJR_ANGLE, p[0], true),
+            angle_time(m.fajr, p[0], true),
             noon(p[1]),
             angle_time(asr_angle, p[2], false),
-            angle_time(SUNSET_ANGLE, p[3], false),
-            angle_time(ISHA_ANGLE, p[4], false),
+            maghrib,
+            match m.isha {
+                Isha::Angle(a) => angle_time(a, p[4], false),
+                Isha::AfterMaghrib(min) => maghrib + min / 60.0,
+            },
         ];
     }
-    t.map(|h| (((h + tz - lng / 15.0) * 60.0 + SAFETY_MIN - 1e-6).ceil() as i64).clamp(0, 1439) as u32)
+    // Far from the equator in summer the sun may never sink to the Subuh or Isya angle: then they
+    // sit no further from sunrise or sunset than angle/60 of the night (the "angle-based" rule).
+    let night = 24.0 - (t[3] - sunrise);
+    let fajr_most = night * m.fajr / 60.0;
+    if !(sunrise - t[0]).is_finite() || sunrise - t[0] > fajr_most {
+        t[0] = sunrise - fajr_most;
+    }
+    if let Isha::Angle(a) = m.isha {
+        let isha_most = night * a / 60.0;
+        if !(t[4] - t[3]).is_finite() || t[4] - t[3] > isha_most {
+            t[4] = t[3] + isha_most;
+        }
+    }
+    t.map(|h| (((h + tz - lng / 15.0) * 60.0 + m.safety_min - 1e-6).ceil() as i64).clamp(0, 1439) as u32)
 }
 
 #[cfg(test)]
 mod tests {
     #[test]
     fn jakarta_is_plausible() {
-        let t = super::times(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(), super::DEFAULT_CITY);
+        let t = super::times_for(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(), super::DEFAULT_CITY, (0.0, 0.0), None);
         // Kemenag schedule for Jakarta on 1 Jan 2026: Subuh 04:19, Dzuhur 11:58, Maghrib 18:15 (±3 min).
         assert!((256..263).contains(&t[0]), "{t:?}");
         assert!((715..722).contains(&t[1]), "{t:?}");
@@ -158,5 +301,33 @@ mod tests {
         assert!(t.windows(2).all(|w| w[0] < w[1]));
         assert_eq!(super::CITIES.len(), 84);
         assert_eq!(super::CITIES[super::DEFAULT_CITY].1, "Jakarta");
+    }
+
+    #[test]
+    fn world_methods_give_sensible_days() {
+        use super::*;
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 6, 21).unwrap();
+        // Mecca by Umm al-Qura: Isya 90 minutes after Maghrib.
+        let mecca = CITIES.len() + WORLD.iter().position(|w| w.1 == "Mecca").unwrap();
+        let (lat, lng) = (WORLD[mecca - CITIES.len()].2, WORLD[mecca - CITIES.len()].3);
+        let t = times_at(date, lat, lng, 3.0, &METHODS[UMM_AL_QURA]);
+        assert!((t[4] as i32 - t[3] as i32 - 90).abs() <= 1, "{t:?}");
+        // Known table for Mecca, 21 Jun 2026: Fajr ~04:11, Dhuhr ~12:22, Maghrib ~19:07 (±4 min).
+        assert!((247..255).contains(&t[0]) && (738..746).contains(&t[1]) && (1143..1151).contains(&t[3]), "{t:?}");
+        // Hanafi Ashar comes later than Shafi'i at the same place.
+        let karachi = times_at(date, 24.86, 67.01, 5.0, &METHODS[KARACHI]);
+        let shafii = times_at(date, 24.86, 67.01, 5.0, &METHODS[MWL]);
+        assert!(karachi[2] > shafii[2] + 30, "{karachi:?} {shafii:?}");
+        // London at midsummer (MWL 18°): the sun never reaches 18°, so the night rule keeps Subuh
+        // after 01:00 and Isya before midnight, in London's summer clock.
+        let london = CITIES.len() + WORLD.iter().position(|w| w.1 == "London").unwrap();
+        let t = times_for(date, london, (0.0, 0.0), None);
+        assert!(t[0] > 60 && t[0] < 4 * 60 && t[4] < 1439 && t[4] > 21 * 60 + 30, "{t:?}");
+        assert!((12 * 60 + 55..13 * 60 + 5).contains(&t[1]), "London Dzuhur in BST: {t:?}");
+        // Every place keeps the five in order.
+        for i in 0..here_index() {
+            let t = times_for(date, i, (0.0, 0.0), None);
+            assert!(t.windows(2).all(|w| w[0] <= w[1]), "{:?} {t:?}", place_name(i));
+        }
     }
 }

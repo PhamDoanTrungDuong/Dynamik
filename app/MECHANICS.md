@@ -124,8 +124,10 @@ Still estimated: pages slide 120 pt sideways and fade, content fades in when the
   and the keyboard language of the window in front are checked about five times a second (both estimated rates).
 - Network pop-up (setting `popup_wifi`, default on): a change is confirmed after 1.5 s (timer 16) and shown for 3.2 s
   (timer 4) with "Connected", "Disconnected" or "No internet access" (sub_14000311f).
-- Mascot (setting `mascot`; not in the original's defaults table, so off here): two white eyes on the resting pill
-  with a cyan-to-purple glow along the bottom (reference picture 15); blinks every 4.2 s (estimated).
+- Mascot (setting `mascot`; not in the original's defaults table, on here because the original's resting pill
+  shows it): two white eyes with a soft blue halo on the resting pill and a cyan-to-purple glow along the bottom
+  (reference picture 15). Every 4.2 s the eyes close into a thin line and open again over 180 ms, drawn frame by
+  frame only during the blink (timings estimated).
 
 ## Battery pop-ups (0x140056c76, shown by 0x14007f665)
 - A charger change wins: "Charging · Charger connected", or "Charger unplugged" with the level in %.
@@ -195,6 +197,41 @@ checking. This rebuild keeps egui/glow but follows the same rule:
   pairings and battery). Notifications are read every 3 s, as the original does (an unpackaged app
   can't subscribe to them).
 - While hidden for full screen it looks again every second, so it returns even if an event is missed.
+  "Hidden" means drawing nothing with clicks passing through, not hiding the window: eframe never
+  calls update for a hidden window (so it could not come back) and its event loop then spins a core.
+- Tray icon: a left click opens the notch, a right click gives the Settings / Quit menu.
 - Release build: LTO, one codegen unit, stripped (exe 15 MB → 4.6 MB).
 Measured idle (Task Manager figures): CPU 0.03 % of the machine, private working set ~36 MB; most
 of the larger "working set" is the graphics driver's shared DLLs.
+
+## Languages (not in the original)
+- English, Tiếng Việt, 中文 (简体), Français; setting `language`, first set from Windows' display
+  language (GetUserDefaultUILanguage), changed from Settings → General → Language at once.
+- `i18n.rs`: the code keeps the English phrase and `t` looks up the chosen language's; a phrase
+  missing from the table stays English. Phrases with numbers use `{}` gaps filled by `tr` in order.
+  Dates and weekday heads come from its own name tables. City, prayer and song names are not translated.
+- Chinese needs Microsoft YaHei (msyh.ttc, part of Windows); it is loaded only while Chinese is chosen.
+- `--lang N` with `--screenshot` checks a language's look.
+
+## Nusa 1.3.1 features, part A (offline)
+- Date and time switch (`show_clock`): hides the clock in the pill and on each page; a running
+  Pomodoro countdown still shows.
+- Pages (`page_order`, `pages_hidden`): Settings › Pages reorders with ↑ ↓ and hides with the
+  switch; one page always stays. Dots, arrows and the slide follow the shown order; Today keeps its
+  own `today_page` switch. A saved order that isn't every page once falls back to the usual order.
+- Calmer notifications: a 380 × 44 pill (the original's 320 × 36 state) with the app's initial, who
+  sent it and, with preview on, what they said. A click opens the sending app through
+  `explorer.exe shell:AppsFolder\<AUMID>`; if that fails the notch opens instead.
+- Ask Nusa box: Ctrl + Alt + Space (RegisterHotKey, like the original). A sum ending in "=" answers
+  as you type (`calc.rs`: + − × ÷ ^ %, brackets, decimal comma); questions need Gemini (part C).
+- Prayer times worldwide (`prayer.rs`): the 84 Indonesian cities as before (Kemenag, fixed zones),
+  plus world cities in their own clock with summer time (shared `summer()` rules), plus "My location"
+  from Windows' location service (15 s limit) in this PC's clock. Methods: Kemenag, MWL, ISNA,
+  Egypt, Umm al-Qura (Isya +90 min), Karachi (Hanafi Ashar), JAKIM, MUIS, Diyanet, UOIF, Gulf;
+  "Usual for the city" by default. Far from the equator Subuh/Isya follow the angle-based night rule.
+  No reminders while "My location" has no fix yet.
+- Smart OCR: Ctrl + Alt + T freezes the screen (GDI), drag an area (Esc or right-click cancels),
+  Windows.Media.Ocr reads it offline in the user's languages (large areas shrunk to its limit), and
+  the text is copied. One read at a time. Nothing is written to disk.
+- Tray menu as the original: Start with Windows, Mascot, Minimal notch (ticked), About, Exit; a left
+  click opens the notch.

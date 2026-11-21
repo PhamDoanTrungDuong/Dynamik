@@ -514,8 +514,22 @@ fn bth_address(id: &str) -> Option<u64> {
     (hex.len() == 12).then(|| u64::from_str_radix(hex, 16).ok()).flatten().filter(|&a| a != 0)
 }
 
-/// A new Windows notification: app name, title and body text.
-pub type Notice = (String, String, String);
+/// Where this PC is, from Windows' location service; None when location is off or denied.
+/// Blocks for a few seconds, so call it from its own thread.
+pub fn locate() -> Option<(f64, f64)> {
+    use windows::Devices::Geolocation::{GeolocationAccessStatus, Geolocator};
+    let access = Geolocator::RequestAccessAsync().ok()?.get().ok()?;
+    if access != GeolocationAccessStatus::Allowed {
+        return None;
+    }
+    // A fix up to 10 minutes old is fine; give up after 15 s so the button never stays stuck.
+    let ticks = |s: i64| windows::Foundation::TimeSpan { Duration: s * 10_000_000 };
+    let pos = Geolocator::new().ok()?.GetGeopositionAsyncWithAgeAndTimeout(ticks(600), ticks(15)).ok()?.get().ok()?.Coordinate().ok()?.Point().ok()?.Position().ok()?;
+    Some((pos.Latitude, pos.Longitude))
+}
+
+/// A new Windows notification: app name, title, body text and the app's id (to open it).
+pub type Notice = (String, String, String, String);
 
 /// New toast notifications, read every 3 s with UserNotificationListener like the original
 /// (0x14000d049): it asks for access once, waits while access is off, and treats ids it has not
@@ -549,11 +563,12 @@ pub fn notification_watch() -> Arc<Mutex<Vec<Notice>>> {
                         continue;
                     }
                     let title = texts.first().cloned().unwrap_or_else(|| app.clone());
+                    let id = n.AppInfo().and_then(|a| a.AppUserModelId()).map(|s| s.to_string()).unwrap_or_default();
                     let mut q = shared.lock().unwrap();
                     if q.len() >= 16 {
                         q.remove(0); // only the latest is shown; don't keep message text piling up
                     }
-                    q.push((app, title, texts.get(1).cloned().unwrap_or_default()));
+                    q.push((app, title, texts.get(1).cloned().unwrap_or_default(), id));
                 }
             }
             if !shared.lock().unwrap().is_empty() {

@@ -26,8 +26,22 @@ const BATTERY_LEVEL: GUID = GUID::from_u128(0xa7ad8041_b45a_4cae_87a3_eecbb468a9
 const LANG_TIMER: usize = 2;
 const MOVE_TIMER: usize = 3;
 
-pub const SETTINGS: u8 = 1;
 const QUIT: u8 = 2;
+pub const OPEN: u8 = 3;
+pub const STARTUP: u8 = 6;
+pub const MASCOT: u8 = 7;
+pub const MINIMAL: u8 = 8;
+pub const ABOUT: u8 = 9;
+// Ticks for the menu's switches (1 start with Windows, 2 mascot, 4 minimal), kept by the notch.
+static CHECKS: AtomicU8 = AtomicU8::new(0);
+
+pub fn set_checks(startup: bool, mascot: bool, minimal: bool) {
+    CHECKS.store(startup as u8 | (mascot as u8) << 1 | (minimal as u8) << 2, Ordering::Relaxed);
+}
+pub const ASK: u8 = 4; // Ctrl + Alt + Space, as the original's Ask Nusa
+pub const OCR: u8 = 5; // Ctrl + Alt + T, as the original's Smart OCR
+const HOTKEY_ASK: i32 = 1;
+const HOTKEY_OCR: i32 = 2;
 const WM_TRAY: u32 = WM_APP + 1;
 static PENDING: AtomicU8 = AtomicU8::new(0);
 static CTX: OnceLock<egui::Context> = OnceLock::new();
@@ -41,6 +55,22 @@ static BRIGHT_SEQ: AtomicU32 = AtomicU32::new(0);
 /// The menu choice made since the last call (0 when none).
 pub fn take() -> u8 {
     PENDING.swap(0, Ordering::Relaxed)
+}
+
+/// One notch at a time: when one is already running, open it (as a tray click does) and say so.
+pub fn already_running() -> bool {
+    unsafe {
+        // Never closed: the mutex lives as long as this notch does.
+        windows_sys::Win32::System::Threading::CreateMutexW(null(), 0, wide("Local\\MyNotch").as_ptr());
+        if GetLastError() != ERROR_ALREADY_EXISTS {
+            return false;
+        }
+        let other = FindWindowW(wide("NotchTray").as_ptr(), null());
+        if !other.is_null() {
+            PostMessageW(other, WM_TRAY, 1, WM_LBUTTONUP as isize);
+        }
+        true
+    }
 }
 
 /// The EV_* changes since the last call.
@@ -90,7 +120,9 @@ unsafe fn add_icon(hwnd: HWND) -> bool {
     for (d, c) in nid.szTip.iter_mut().zip("My Notch".encode_utf16()) {
         *d = c;
     }
-    Shell_NotifyIconW(NIM_ADD, &nid) != 0
+    let added = Shell_NotifyIconW(NIM_ADD, &nid) != 0;
+    DestroyIcon(nid.hIcon); // the shell keeps its own copy
+    added
 }
 
 pub fn start(ctx: &egui::Context) {
@@ -113,6 +145,9 @@ pub fn start(ctx: &egui::Context) {
         RegisterPowerSettingNotification(hwnd, &BATTERY_LEVEL, DEVICE_NOTIFY_WINDOW_HANDLE);
         HWND_.store(hwnd, Ordering::Relaxed);
         AddClipboardFormatListener(hwnd);
+        // Fails quietly when another app already owns the keys; the notch still opens by hover.
+        RegisterHotKey(hwnd, HOTKEY_ASK, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_SPACE as u32);
+        RegisterHotKey(hwnd, HOTKEY_OCR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, u32::from(b'T'));
         let flags = WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS;
         SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, null_mut(), Some(win_event), 0, 0, flags);
         SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE, null_mut(), Some(win_event), 0, 0, flags);
@@ -146,6 +181,11 @@ unsafe extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> L
         }
         return 1;
     }
+    if msg == WM_HOTKEY {
+        PENDING.store(if w as i32 == HOTKEY_OCR { OCR } else { ASK }, Ordering::Relaxed);
+        wake();
+        return 0;
+    }
     if msg == WM_CLIPBOARDUPDATE {
         signal(EV_CLIP);
         return 0;
@@ -163,11 +203,23 @@ unsafe extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> L
         }
         return 0;
     }
-    if msg == WM_TRAY && w == 1 && matches!(l as u32 & 0xFFFF, WM_LBUTTONUP | WM_RBUTTONUP) {
+    // A left click opens the notch; the right click gives the menu.
+    if msg == WM_TRAY && w == 1 && l as u32 & 0xFFFF == WM_LBUTTONUP {
+        PENDING.store(OPEN, Ordering::Relaxed);
+        wake();
+        return 0;
+    }
+    if msg == WM_TRAY && w == 1 && l as u32 & 0xFFFF == WM_RBUTTONUP {
+        // The original's menu: three ticked switches, then About and Exit.
         let menu = CreatePopupMenu();
-        AppendMenuW(menu, MF_STRING, SETTINGS as usize, wide("Settings").as_ptr());
+        let checks = CHECKS.load(Ordering::Relaxed);
+        for (id, bit, label) in [(STARTUP, 1, "Start with Windows"), (MASCOT, 2, "Mascot"), (MINIMAL, 4, "Minimal notch")] {
+            let tick = if checks & bit != 0 { MF_CHECKED } else { MF_UNCHECKED };
+            AppendMenuW(menu, MF_STRING | tick, id as usize, wide(crate::i18n::t(label)).as_ptr());
+        }
         AppendMenuW(menu, MF_SEPARATOR, 0, null());
-        AppendMenuW(menu, MF_STRING, QUIT as usize, wide("Quit").as_ptr());
+        AppendMenuW(menu, MF_STRING, ABOUT as usize, wide(crate::i18n::t("About My Notch")).as_ptr());
+        AppendMenuW(menu, MF_STRING, QUIT as usize, wide(crate::i18n::t("Exit")).as_ptr());
         let mut pt = POINT { x: 0, y: 0 };
         GetCursorPos(&mut pt);
         SetForegroundWindow(hwnd);
@@ -214,20 +266,55 @@ unsafe extern "system" fn keys(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
     CallNextHookEx(null_mut(), code, w, l)
 }
 
-/// A 32 px black notch pill with a white rim, readable on light and dark taskbars.
-unsafe fn icon() -> HICON {
-    const N: usize = 32;
-    let mut bgra = vec![0u8; N * N * 4];
-    for y in 0..N {
-        for x in 0..N {
-            let (dx, dy) = (x as f32 + 0.5 - 16.0, y as f32 + 0.5 - 16.0);
-            let d = (dx.abs() - 7.0).max(0.0).hypot(dy) - 8.0; // distance to a 30 x 16 capsule
-            let outer = (0.5 - d).clamp(0.0, 1.0);
-            let inner = (0.5 - (d + 2.5)).clamp(0.0, 1.0);
-            let v = (255.0 * (1.0 - inner)) as u8;
-            bgra[(y * N + x) * 4..][..4].copy_from_slice(&[v, v, v, (255.0 * outer) as u8]);
+/// The app icon choices from icon-options/ (build.rs gives the exe the first one).
+pub const ICON_NAMES: [&str; 3] = ["Violet", "Neon dark", "Classic light"];
+const ICON_PNGS: [&[u8]; 3] = [
+    include_bytes!("../../icon-options/icon-dog-c-violet.png"),
+    include_bytes!("../../icon-options/icon-dog-a-neon-dark.png"),
+    include_bytes!("../../icon-options/icon-dog-b-classic-light.png"),
+];
+static ICON_CHOICE: AtomicU8 = AtomicU8::new(0);
+
+/// Picks the tray icon; swaps it at once when it is already in the tray.
+pub fn set_icon(choice: usize) {
+    ICON_CHOICE.store(choice.min(ICON_PNGS.len() - 1) as u8, Ordering::Relaxed);
+    let hwnd = HWND_.load(Ordering::Relaxed);
+    if !hwnd.is_null() {
+        unsafe {
+            let mut nid = data(hwnd);
+            nid.uFlags = NIF_ICON;
+            nid.hIcon = icon();
+            Shell_NotifyIconW(NIM_MODIFY, &nid);
+            DestroyIcon(nid.hIcon); // the shell keeps its own copy
         }
     }
-    let mask = [0u8; N * N / 8];
-    CreateIcon(null_mut(), N as i32, N as i32, 1, 32, mask.as_ptr(), bgra.as_ptr())
+}
+
+/// The chosen picture at 32 px.
+fn icon_pixels() -> image::RgbaImage {
+    const N: u32 = 32;
+    let png = ICON_PNGS[ICON_CHOICE.load(Ordering::Relaxed) as usize];
+    image::load_from_memory(png)
+        .map(|i| image::imageops::resize(&i.to_rgba8(), N, N, image::imageops::FilterType::Lanczos3))
+        .unwrap_or_else(|_| image::RgbaImage::new(N, N))
+}
+
+unsafe fn icon() -> HICON {
+    let img = icon_pixels();
+    let bgra: Vec<u8> = img.pixels().flat_map(|p| [p[2], p[1], p[0], p[3]]).collect();
+    let mask = vec![0u8; (img.width() * img.height() / 8) as usize];
+    CreateIcon(null_mut(), img.width() as i32, img.height() as i32, 1, 32, mask.as_ptr(), bgra.as_ptr())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn every_icon_choice_decodes() {
+        for i in 0..super::ICON_PNGS.len() {
+            super::ICON_CHOICE.store(i as u8, std::sync::atomic::Ordering::Relaxed);
+            let img = super::icon_pixels();
+            assert_eq!((img.width(), img.height()), (32, 32));
+            assert!(img.pixels().any(|p| p[3] > 0), "icon {i} came out empty");
+        }
+    }
 }

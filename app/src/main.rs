@@ -1,7 +1,10 @@
 #![windows_subsystem = "windows"]
 //! A notch at the top of the screen: Pomodoro, Water, Shelf, To-do, Prayer and Widgets pages,
 //! drawn to match the original's black notch with page dots and spring motion.
+mod calc;
 mod data;
+mod ocr;
+mod i18n;
 mod dragout;
 mod media;
 mod prayer;
@@ -9,6 +12,7 @@ mod tray;
 
 use chrono::{Datelike, Duration, Local, NaiveDate, NaiveDateTime, Timelike, Utc, Weekday};
 use data::*;
+use i18n::{t, tr};
 use eframe::egui::{self, pos2, vec2, Align2, Color32, FontFamily, FontId, Pos2, Rect, Sense, Shape, Stroke, Vec2};
 use std::{collections::{BTreeMap, HashSet}, f32::consts::PI, path::PathBuf, time::Instant};
 
@@ -32,10 +36,14 @@ const ORANGE: Color32 = Color32::from_rgb(245, 158, 11);
 // state in 0x140056ff1 (pill 160x34, minimal 150x30, open 520 wide, all x screen scale).
 const COLLAPSED: Vec2 = vec2(196.0, 38.0);
 const MINIMAL: Vec2 = vec2(150.0, 32.0);
+const ABOUT_SECS: f32 = 5.0;
+const NOTICE: Vec2 = vec2(380.0, 44.0); // a notification: one calm line (the original's 320 x 36 state)
+const PEEK: Vec2 = vec2(56.0, 8.0); // the original's peek state: a thin bar while nothing is going on
 const EXPANDED: Vec2 = vec2(548.0, 184.0);
 const POPUP: Vec2 = vec2(404.0, 80.0);
+const SETTINGS: Vec2 = vec2(548.0, 430.0); // tall enough to read a section at a time
 const LYRICS: Vec2 = vec2(676.0, 184.0); // Music page with lyrics beside it (reference picture 12)
-const WIN: Vec2 = vec2(LYRICS.x + 2.0 * EAR_MAX, EXPANDED.y);
+const WIN: Vec2 = vec2(LYRICS.x + 2.0 * EAR_MAX, SETTINGS.y);
 const EAR_MAX: f32 = 14.0; // side margin of the pill states in 0x140056ff1
 // Springs set on every state change in 0x14007dae7: (stiffness, damping).
 const SPRING: (f32, f32) = (230.0, 19.0); // most changes: open, close, pop-up (a little bounce)
@@ -66,9 +74,9 @@ const SHELF_PAGE: usize = 3;
 const TODAY_PAGE: usize = 7;
 // How many notifications the Today page remembers (estimated; not found in the original).
 const RECENT_MAX: usize = 20;
-// The mascot blinks for 140 ms every 4.2 s.
+// The mascot blinks every 4.2 s; the lids close and open again over 180 ms (estimated).
 const BLINK_EVERY_MS: i64 = 4200;
-const BLINK_MS: i64 = 140;
+const BLINK_MS: i64 = 180;
 const LONG_BREAK_EVERY: u32 = 4;
 const RESET_CONFIRM_SECS: f32 = 3.0;
 const MOON: [&str; 8] = ["New Moon", "Waxing Crescent", "First Quarter", "Waxing Gibbous", "Full Moon", "Waning Gibbous", "Last Quarter", "Waning Crescent"];
@@ -94,10 +102,15 @@ fn main() -> eframe::Result {
     let args: Vec<String> = std::env::args().collect();
     let shot = args.iter().position(|a| a == "--screenshot").and_then(|i| args.get(i + 1)).map(PathBuf::from);
     // --page N opens on that page (used to check each page's look).
-    // --resting keeps the notch closed (and --mascot turns the mascot on) for checking those looks.
+    // --resting keeps the notch closed (and --mascot turns the mascot on) for checking those looks;
+    // --settings opens Settings.
     let resting = args.iter().any(|a| a == "--resting");
     let mascot_on = args.iter().any(|a| a == "--mascot");
     let page: usize = args.iter().position(|a| a == "--page").and_then(|i| args.get(i + 1)).and_then(|p| p.parse().ok()).unwrap_or(0);
+    // Screenshots run beside the real notch, so only a real start is limited to one.
+    if shot.is_none() && tray::already_running() {
+        return Ok(());
+    }
     let opts = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("My Notch")
@@ -131,6 +144,17 @@ fn setup_fonts(ctx: &egui::Context) {
         fonts.font_data.insert("segoe".into(), std::sync::Arc::new(egui::FontData::from_owned(b)));
         fonts.families.get_mut(&FontFamily::Proportional).unwrap().insert(0, "segoe".into());
     }
+    // Segoe UI has no Chinese; Microsoft YaHei comes with Windows. Loaded only for Chinese (~20 MB).
+    if i18n::lang() == i18n::ZH {
+        if let Some(b) = load("msyh.ttc").or_else(|| load("msyh.ttf")).or_else(|| load("simsun.ttc")).or_else(|| load("Deng.ttf")) {
+            fonts.font_data.insert("yahei".into(), std::sync::Arc::new(egui::FontData::from_owned(b)));
+            let fam = fonts.families.get_mut(&FontFamily::Proportional).unwrap();
+            fam.insert(fam.len().min(1), "yahei".into());
+        } else {
+            // No Chinese font on this Windows: English reads, boxes don't. Callers save what was kept.
+            i18n::set(i18n::EN);
+        }
+    }
     if let Some(b) = load("seguisb.ttf").or_else(|| load("segoeuib.ttf")) {
         fonts.font_data.insert("segoe-bold".into(), std::sync::Arc::new(egui::FontData::from_owned(b)));
         bold_family.push("segoe-bold".to_string());
@@ -145,7 +169,10 @@ enum Mode { Focus, Short, Long }
 
 #[derive(Clone, Copy)]
 enum HudKind { Volume, Muted, Brightness, Caps, Lang }
-enum Kind { Drink, Refill, TaskStart(usize), TaskEnd(usize), Prayer(u32, bool), Battery(u8, bool), Hud(HudKind, f32), Network(u8), Bluetooth(Option<u8>), Notice(String), Info }
+/// Asking Windows where this PC is, for "My location".
+#[derive(Clone, Copy, PartialEq)]
+enum Locating { Idle, Busy, Failed, Got(f64, f64) }
+enum Kind { Drink, Refill, TaskStart(usize), TaskEnd(usize), Prayer(u32, bool), Battery(u8, bool), Hud(HudKind, f32), Network(u8), Bluetooth(Option<u8>), Notice(String, String), Info, About }
 struct Alert { title: String, body: String, kind: Kind, at: Instant }
 
 /// A critically-tuned spring for one value.
@@ -174,6 +201,13 @@ struct App {
     page: usize,
     page_anim: f32,
     settings_open: bool,
+    // The Ask box (Ctrl + Alt + Space): what is typed, the answer, and a focus request for the field.
+    ask_open: bool,
+    ask_text: String,
+    ask_answer: String,
+    ask_focus: bool,
+    locating: std::sync::Arc<std::sync::Mutex<Locating>>,
+    ocr: std::sync::Arc<std::sync::Mutex<Option<ocr::Outcome>>>,
     expanded: bool,
     held: bool, // opened from the tray: stays open until the pointer has come in and left
     last_inside: Instant,
@@ -241,7 +275,6 @@ impl App {
         if live {
             tray::start(ctx);
         }
-        setup_fonts(ctx);
         let mut v = egui::Visuals::dark();
         v.panel_fill = Color32::TRANSPARENT;
         v.window_fill = BG;
@@ -250,6 +283,16 @@ impl App {
         v.selection.bg_fill = BLUE_DARK;
         ctx.set_visuals(v);
         let mut s = Settings::load();
+        if live {
+            tray::set_icon(s.app_icon);
+        }
+        // --lang N shows a screenshot in that language (in memory only).
+        if let Some(l) = shot.as_ref().and(std::env::args().skip_while(|a| a != "--lang").nth(1)).and_then(|l| l.parse().ok()) {
+            s.language = l;
+        }
+        i18n::set(s.language);
+        setup_fonts(ctx);
+        s.language = i18n::lang();
         s.mascot |= mascot_on;
         // A screenshot of the Today page needs the page on (in memory only; settings are saved only from Settings).
         s.today_page |= shot.is_some() && page == TODAY_PAGE;
@@ -287,7 +330,11 @@ impl App {
         let left = s.focus as f64 * 60.0;
         let start = if shot.is_some() && !resting { EXPANDED } else { COLLAPSED };
         App {
-            now, page: page.min(PAGES.len() - 1), page_anim: page.min(PAGES.len() - 1) as f32, settings_open: false, expanded: shot.is_some() && !resting, held: false, resting, last_inside: Instant::now(), applied: None,
+            now, page: page.min(PAGES.len() - 1), page_anim: page.min(PAGES.len() - 1) as f32, settings_open: shot.is_some() && std::env::args().any(|a| a == "--settings"),
+            ask_open: shot.is_some() && std::env::args().any(|a| a == "--ask"), ask_text: String::new(), ask_answer: String::new(), ask_focus: false,
+            locating: std::sync::Arc::new(std::sync::Mutex::new(Locating::Idle)),
+            ocr: Default::default(),
+            expanded: shot.is_some() && !resting, held: false, resting, last_inside: Instant::now(), applied: None,
             alert: if shot.is_some() { demo_alert() } else { None }, shot, frames: 0,
             w: Spring { x: start.x, v: 0.0 }, h: Spring { x: start.y, v: 0.0 }, content: Spring { x: 0.0, v: 0.0 }, spring: SPRING, last_target: start,
             tasks: load_tasks(), form: None, todo_edit: false,
@@ -300,7 +347,23 @@ impl App {
         }
     }
 
-    fn page_count(&self) -> usize { if self.s.today_page { PAGES.len() } else { TODAY_PAGE } }
+    /// The pages shown, in the user's order; Today only with its setting on. Never empty.
+    fn order(&self) -> Vec<usize> {
+        let shown: Vec<usize> = self.s.page_order.iter().copied()
+            .filter(|&p| !self.s.pages_hidden.contains(&p) && (p != TODAY_PAGE || self.s.today_page))
+            .collect();
+        if shown.is_empty() { vec![0] } else { shown }
+    }
+
+    /// The prayer place's name: the chosen city, or "My location".
+    fn city_name(&self) -> String {
+        if self.s.prayer_city == prayer::here_index() { t("My location").into() } else { prayer::place_name(self.s.prayer_city).1.into() }
+    }
+
+    /// Where the current page sits in `order`.
+    fn pos(&self) -> usize {
+        self.order().iter().position(|&p| p == self.page).unwrap_or(0)
+    }
     fn today(&self) -> NaiveDate { self.now.date() }
     fn now_min(&self) -> u32 { self.now.hour() * 60 + self.now.minute() }
 
@@ -345,7 +408,7 @@ impl App {
     }
     /// Prayer times with the per-prayer adjustments from Settings (0x1400863af).
     fn prayer_times(&self, day: NaiveDate) -> [u32; 5] {
-        let t = prayer::times(day, self.s.prayer_city);
+        let t = prayer::times_for(day, self.s.prayer_city, (self.s.prayer_lat, self.s.prayer_lon), self.s.prayer_method.checked_sub(1));
         std::array::from_fn(|i| (t[i] as i32 + self.s.prayer_adj[i]).clamp(0, 1439) as u32)
     }
     fn focus_today(&self) -> u32 { self.focus_log.get(&self.today()).copied().unwrap_or(0) }
@@ -384,14 +447,14 @@ impl App {
                     // Texts and order from 0x14000143f: rounds 1-3 "Focus done", the 4th "Round complete".
                     if self.rounds % LONG_BREAK_EVERY == 0 {
                         self.mode = Mode::Long;
-                        self.notify("Round complete", &format!("Time for a {} min break", self.s.long_break), Kind::Info);
+                        self.notify(t("Round complete"), &tr("Time for a {} min break", &[&self.s.long_break]), Kind::Info);
                     } else {
                         self.mode = Mode::Short;
-                        self.notify("Focus done", &format!("Time for a {} min break", self.s.short_break), Kind::Info);
+                        self.notify(t("Focus done"), &tr("Time for a {} min break", &[&self.s.short_break]), Kind::Info);
                     }
                 } else {
                     self.mode = Mode::Focus;
-                    self.notify("Break over", &format!("Back to focus, {} min", self.s.focus), Kind::Info);
+                    self.notify(t("Break over"), &tr("Back to focus, {} min", &[&self.s.focus]), Kind::Info);
                 }
                 self.left = self.mode_len(self.mode);
             }
@@ -424,9 +487,9 @@ impl App {
             if due {
                 self.save_water();
                 if (self.in_bottle as f32) < REFILL_FRACTION * p.each as f32 {
-                    self.notify("Time to Refill", "Your bottle is probably empty", Kind::Refill);
+                    self.notify(t("Time to Refill"), t("Your bottle is probably empty"), Kind::Refill);
                 } else {
-                    self.notify("Time to Drink", &format!("{} ml", p.each), Kind::Drink);
+                    self.notify(t("Time to Drink"), &format!("{} ml", p.each), Kind::Drink);
                 }
             }
         }
@@ -446,15 +509,17 @@ impl App {
                 let title = self.tasks[i].title.clone();
                 if start {
                     self.tasks[i].fired_start = true;
-                    self.notify("Task Time!", &title, Kind::TaskStart(i));
+                    self.notify(t("Task Time!"), &title, Kind::TaskStart(i));
                 } else {
                     self.tasks[i].fired_end = true;
-                    self.notify("Time's Up!", &title, Kind::TaskEnd(i));
+                    self.notify(t("Time's Up!"), &title, Kind::TaskEnd(i));
                 }
             }
         }
 
-        if self.s.prayer && (self.s.prayer_reminder || self.s.prayer_pause_media) && self.alert.is_none() {
+        // "My location" not found yet would time prayers for 0°, 0°: no reminders until it is.
+        let placed = self.s.prayer_city != prayer::here_index() || (self.s.prayer_lat, self.s.prayer_lon) != (0.0, 0.0);
+        if self.s.prayer && placed && (self.s.prayer_reminder || self.s.prayer_pause_media) && self.alert.is_none() {
             let t = self.prayer_times(today);
             'outer: for (i, &pt) in t.iter().enumerate() {
                 for early in [false, true] {
@@ -465,7 +530,7 @@ impl App {
                     // Due from 3 s before until 2 min after (0x140002345: window -0.05 .. +2.0 minutes).
                     let now_f = m as f32 + self.now.second() as f32 / 60.0;
                     if now_f >= at as f32 + PRAYER_WINDOW.0 && now_f < at as f32 + PRAYER_WINDOW.1 && self.prayer_fired.insert((today, i, early)) {
-                        let body = if early { format!("In {PRAYER_EARLY_MIN} minutes") } else { "It's time to pray".to_string() };
+                        let body = if early { tr("In {} minutes", &[&PRAYER_EARLY_MIN]) } else { i18n::t("It's time to pray").to_string() };
                         if self.s.prayer_reminder {
                             self.notify(prayer::NAMES[i], &body, Kind::Prayer(pt, early));
                         }
@@ -509,16 +574,16 @@ impl App {
             if let (true, Some((p, ac)), Some((op, oac))) = (self.s.popup_battery && self.alert.is_none(), self.battery, old) {
                 if ac != oac {
                     if ac {
-                        self.notify("Charging", "Charger connected", Kind::Battery(p, ac));
+                        self.notify(t("Charging"), t("Charger connected"), Kind::Battery(p, ac));
                     } else {
-                        self.notify("Charger unplugged", &format!("{p}%"), Kind::Battery(p, ac));
+                        self.notify(t("Charger unplugged"), &format!("{p}%"), Kind::Battery(p, ac));
                     }
                 } else if !ac && p < BATTERY_CRITICAL && op >= BATTERY_CRITICAL {
-                    self.notify("Battery critical", "Plug in now", Kind::Battery(p, ac));
+                    self.notify(t("Battery critical"), t("Plug in now"), Kind::Battery(p, ac));
                 } else if !ac && p < BATTERY_LOW && op >= BATTERY_LOW {
-                    self.notify("Low battery", "Plug in soon", Kind::Battery(p, ac));
+                    self.notify(t("Low battery"), t("Plug in soon"), Kind::Battery(p, ac));
                 } else if ac && p >= 100 && op < 100 {
-                    self.notify("Fully charged", "You can unplug", Kind::Battery(p, ac));
+                    self.notify(t("Fully charged"), t("You can unplug"), Kind::Battery(p, ac));
                 }
             }
         }
@@ -535,7 +600,8 @@ impl App {
         if self.alert.as_ref().is_some_and(|a| match a.kind {
             Kind::Battery(..) => a.at.elapsed().as_secs_f32() > BATTERY_POPUP_SECS,
             Kind::Bluetooth(_) => a.at.elapsed().as_secs_f32() > BT_POPUP_SECS,
-            Kind::Notice(_) => a.at.elapsed().as_secs_f32() > NOTICE_POPUP_SECS,
+            Kind::Notice(..) => a.at.elapsed().as_secs_f32() > NOTICE_POPUP_SECS,
+            Kind::About => a.at.elapsed().as_secs_f32() > ABOUT_SECS,
             Kind::Prayer(_, early) => a.at.elapsed().as_secs_f32() > if early { PRAYER_EARLY_SECS } else { PRAYER_POPUP_SECS },
             _ => false,
         }) {
@@ -546,12 +612,18 @@ impl App {
     fn target_size(&self) -> Vec2 {
         if self.expanded && self.page == 0 && self.lyrics_open && !self.settings_open {
             LYRICS
+        } else if self.expanded && self.settings_open {
+            SETTINGS
         } else if self.expanded {
             EXPANDED
         } else if self.alert.as_ref().is_some_and(|a| matches!(a.kind, Kind::Hud(..))) {
             HUD
+        } else if self.alert.as_ref().is_some_and(|a| matches!(a.kind, Kind::Notice(..))) {
+            NOTICE
         } else if self.alert.is_some() {
             POPUP
+        } else if self.s.minimal && self.idle() {
+            PEEK
         } else if self.s.minimal && !self.running {
             MINIMAL
         } else {
@@ -573,7 +645,7 @@ impl App {
         let near = (self.w.x - target.x).abs() < 40.0 && (self.h.x - target.y).abs() < 20.0;
         moving |= self.content.step(if near { 1.0 } else { 0.0 }, dt * if near { 1.0 } else { 3.0 }, SPRING_TO_PEEK);
         self.content.x = self.content.x.clamp(0.0, 1.0);
-        let page_target = self.page as f32;
+        let page_target = self.pos() as f32;
         if (self.page_anim - page_target).abs() > 0.001 {
             self.page_anim += (page_target - self.page_anim) * (1.0 - (-dt * 14.0).exp());
             moving = true;
@@ -588,7 +660,8 @@ impl App {
         if self.shot.is_none() {
             let size = vec2(self.w.x.max(target.x) + 2.0 * EAR_MAX, self.h.x.max(target.y));
             let mon = ctx.input(|i| i.viewport().monitor_size).unwrap_or(vec2(1920.0, 1080.0));
-            let x = ((mon.x / zoom - size.x) / 2.0).max(0.0);
+            // Both are in points, which already include the zoom; dividing by it again pushed bigger sizes left.
+            let x = ((mon.x - size.x) / 2.0).max(0.0);
             let want = [size.x.ceil() as i32, size.y.ceil() as i32, x.round() as i32];
             if self.applied != Some(want) {
                 self.applied = Some(want);
@@ -610,7 +683,7 @@ impl App {
         if !title.1.is_empty() {
             p.text(pos2(r.left() + 22.0 + w0, y), Align2::LEFT_CENTER, title.1, bold(17.0), title.2);
         }
-        let date = self.now.format("%a %-d %b %Y").to_string();
+        let date = i18n::date(self.now);
         let time = self.now.format("%H:%M").to_string();
         let dg = p.layout_no_wrap(date, reg(16.0), WHITE);
         let tg = p.layout_no_wrap(time, bold(16.0), WHITE);
@@ -619,8 +692,10 @@ impl App {
         self.status_ring(&p, pos2(x0 + 11.0, y), 9.0);
         let dx = x0 + 32.0;
         let dw = dg.size().x;
-        p.galley(pos2(dx, y - dg.size().y / 2.0), dg, WHITE);
-        p.galley(pos2(dx + dw + 8.0, y - tg.size().y / 2.0), tg, WHITE);
+        if self.s.show_clock {
+            p.galley(pos2(dx, y - dg.size().y / 2.0), dg, WHITE);
+            p.galley(pos2(dx + dw + 8.0, y - tg.size().y / 2.0), tg, WHITE);
+        }
         if self.page != SHELF_PAGE || self.settings_open {
             bars(&p, pos2(r.right() - 34.0, y), self.running);
         }
@@ -637,7 +712,8 @@ impl App {
 
     fn dots(&mut self, ui: &mut egui::Ui, r: Rect) {
         let y = r.bottom() - 12.0;
-        let n = self.page_count();
+        let order = self.order();
+        let n = order.len();
         let mut x = r.center().x - (n as f32 * 9.0 + 14.0) / 2.0;
         for i in 0..n {
             // The current page's dot stretches into a pill, following the page motion.
@@ -647,7 +723,7 @@ impl App {
             let col = lerp_color(FAINT, WHITE, wgt);
             ui.painter().rect_filled(rect, 2.5, col);
             if ui.interact(rect.expand(3.0), ui.id().with(("dot", i)), Sense::click()).clicked() {
-                self.page = i;
+                self.page = order[i];
             }
             x += w + 4.0;
         }
@@ -655,11 +731,12 @@ impl App {
 
     fn arrows(&mut self, ui: &mut egui::Ui, r: Rect) {
         let y = r.top() + 98.0;
-        if self.page > 0 && circle_button(ui, pos2(r.left() + 26.0, y), 13.0, ARROW, "left") {
-            self.page -= 1;
+        let (order, at) = (self.order(), self.pos());
+        if at > 0 && circle_button(ui, pos2(r.left() + 26.0, y), 13.0, ARROW, "left") {
+            self.page = order[at - 1];
         }
-        if self.page + 1 < self.page_count() && circle_button(ui, pos2(r.right() - 26.0, y), 13.0, ARROW, "right") {
-            self.page += 1;
+        if at + 1 < order.len() && circle_button(ui, pos2(r.right() - 26.0, y), 13.0, ARROW, "right") {
+            self.page = order[at + 1];
         }
     }
 
@@ -668,12 +745,12 @@ impl App {
     /// Volume, Caps Lock and keyboard-language changes show a short indicator, unless a pop-up
     /// that needs an answer is up.
     fn watch_indicators(&mut self) {
-        let free = self.alert.as_ref().is_none_or(|a| matches!(a.kind, Kind::Hud(..) | Kind::Info | Kind::Battery(..) | Kind::Bluetooth(_) | Kind::Notice(_)));
+        let free = self.alert.as_ref().is_none_or(|a| matches!(a.kind, Kind::Hud(..) | Kind::Info | Kind::Battery(..) | Kind::Bluetooth(_) | Kind::Notice(..)));
         let vol = *self.volume.lock().unwrap();
         if let (Some((v, m)), Some((ov, om))) = (vol, self.last_volume) {
             if self.s.hud_volume && free && (m != om || (v - ov).abs() > 0.004) {
                 let kind = if m { HudKind::Muted } else { HudKind::Volume };
-                self.alert = Some(Alert { title: "Volume".into(), body: String::new(), kind: Kind::Hud(kind, v), at: Instant::now() });
+                self.alert = Some(Alert { title: t("Volume").into(), body: String::new(), kind: Kind::Hud(kind, v), at: Instant::now() });
             }
         }
         if vol.is_some() {
@@ -683,7 +760,7 @@ impl App {
         if seq != self.last_bright {
             self.last_bright = seq;
             if self.s.hud_brightness && free {
-                self.alert = Some(Alert { title: "Brightness".into(), body: String::new(), kind: Kind::Hud(HudKind::Brightness, level), at: Instant::now() });
+                self.alert = Some(Alert { title: t("Brightness").into(), body: String::new(), kind: Kind::Hud(HudKind::Brightness, level), at: Instant::now() });
             }
         }
         // A headset that was not connected at the last look shows once; those connected at start do not.
@@ -694,7 +771,7 @@ impl App {
             if let Some(old) = &self.last_headsets {
                 if let Some((_, name, battery)) = heads.iter().find(|h| !old.contains(&h.0)) {
                     if self.s.popup_bluetooth && free {
-                        let body = battery.map_or("Connected".to_string(), |b| format!("Connected · {b}%"));
+                        let body = battery.map_or(t("Connected").to_string(), |b| tr("Connected · {}%", &[&b]));
                         self.alert = Some(Alert { title: name.clone(), body, kind: Kind::Bluetooth(*battery), at: Instant::now() });
                     }
                     // A pop-up waiting for an answer is up: show this one after it, not never.
@@ -715,10 +792,10 @@ impl App {
             self.recent.clear();
         }
         self.recent.truncate(RECENT_MAX);
-        if let Some((app, title, body)) = new.into_iter().last() {
+        if let Some((app, title, body, id)) = new.into_iter().last() {
             if self.s.notifications && free {
                 let body = if self.s.notification_preview { body } else { String::new() };
-                self.alert = Some(Alert { title, body, kind: Kind::Notice(app), at: Instant::now() });
+                self.alert = Some(Alert { title, body, kind: Kind::Notice(app, id), at: Instant::now() });
             }
         }
         // A network change shows once it has held for 1.5 s, like the original's debounce.
@@ -733,7 +810,7 @@ impl App {
                             self.network_change = None;
                             self.last_network = Some(net.clone());
                             if self.s.popup_wifi && free {
-                                let body = ["Disconnected", "No internet access", "Connected"][net.1.min(2) as usize];
+                                let body = [t("Disconnected"), t("No internet access"), t("Connected")][net.1.min(2) as usize];
                                 self.alert = Some(Alert { title: net.0, body: body.into(), kind: Kind::Network(net.1), at: Instant::now() });
                             }
                         }
@@ -746,19 +823,27 @@ impl App {
         if caps != self.last_caps {
             self.last_caps = caps;
             if self.s.hud_caps && free {
-                self.alert = Some(Alert { title: "Caps Lock".into(), body: if caps { "On" } else { "Off" }.into(), kind: Kind::Hud(HudKind::Caps, caps as u8 as f32), at: Instant::now() });
+                self.alert = Some(Alert { title: t("Caps Lock").into(), body: if caps { t("On") } else { t("Off") }.into(), kind: Kind::Hud(HudKind::Caps, caps as u8 as f32), at: Instant::now() });
             }
         }
         let lang = input_lang();
         if lang != self.last_lang && lang != 0 {
             self.last_lang = lang;
             if self.s.hud_language && free {
-                self.alert = Some(Alert { title: "Input language".into(), body: lang_name(lang), kind: Kind::Hud(HudKind::Lang, 0.0), at: Instant::now() });
+                self.alert = Some(Alert { title: t("Input language").into(), body: lang_name(lang), kind: Kind::Hud(HudKind::Lang, 0.0), at: Instant::now() });
             }
         }
     }
 
+    /// Nothing to show: no session running or paused, no song playing, no mascot to look at.
+    fn idle(&self) -> bool {
+        !self.running && self.left >= self.mode_len(self.mode) && !self.s.mascot && !self.media.now.lock().is_ok_and(|n| n.playing)
+    }
+
     fn draw_collapsed(&mut self, ui: &mut egui::Ui, r: Rect) {
+        if self.target_size() == PEEK {
+            return; // the bar itself is all there is
+        }
         let p = ui.painter();
         let y = r.center().y;
         if self.s.mascot && !self.running && self.left >= self.mode_len(self.mode) {
@@ -768,12 +853,13 @@ impl App {
         if self.s.status_ring < 2 {
             self.status_ring(p, pos2(r.left() + 26.0, y), 9.0);
         }
-        let (text, col) = if self.running || self.left < self.mode_len(self.mode) {
-            (mmss(self.left), PURPLE)
-        } else {
-            (self.now.format("%H:%M").to_string(), WHITE)
-        };
-        p.text(r.center(), Align2::CENTER_CENTER, text, bold(18.0), col);
+        // A session's countdown always shows; the clock only with the clock switch on.
+        let timer = self.running || self.left < self.mode_len(self.mode);
+        if timer {
+            p.text(r.center(), Align2::CENTER_CENTER, mmss(self.left), bold(18.0), PURPLE);
+        } else if self.s.show_clock {
+            p.text(r.center(), Align2::CENTER_CENTER, self.now.format("%H:%M").to_string(), bold(18.0), WHITE);
+        }
         if !self.s.minimal {
             bars(p, pos2(r.right() - 26.0, y), self.running);
         }
@@ -785,7 +871,7 @@ impl App {
         let p = ui.painter().clone();
         let icon = pos2(r.left() + 46.0, r.center().y);
         let tx = r.left() + 84.0;
-        if !matches!(a.kind, Kind::Hud(..) | Kind::Notice(_)) {
+        if !matches!(a.kind, Kind::Hud(..) | Kind::Notice(..)) {
             p.text(pos2(tx, r.center().y - 9.0), Align2::LEFT_CENTER, &title, bold(17.0), WHITE);
             p.text(pos2(tx, r.center().y + 13.0), Align2::LEFT_CENTER, &body, reg(14.0), DIM);
         }
@@ -806,20 +892,20 @@ impl App {
             Kind::Drink | Kind::Refill => {
                 drop_icon(&p, icon, 12.0, BLUE);
                 let refill = matches!(a.kind, Kind::Refill);
-                let first = if refill { "Refilled" } else { "Drank" };
+                let first = if refill { t("Refilled") } else { t("Drank") };
                 if pill_button(ui, Rect::from_min_size(pos2(right - 168.0, r.center().y - 15.0), vec2(84.0, 30.0)), first, BLUE_DARK, "p1") {
                     if refill {
                         // Refilled fills the bottle, then asks for the drink again (0x1400583ab).
                         self.in_bottle = self.s.bottle;
                         self.save_water();
                         let each = self.s.water_plan().each;
-                        self.alert = Some(Alert { title: "Time to Drink".into(), body: format!("{each} ml"), kind: Kind::Drink, at: Instant::now() });
+                        self.alert = Some(Alert { title: t("Time to Drink").into(), body: format!("{each} ml"), kind: Kind::Drink, at: Instant::now() });
                         return;
                     }
                     self.drink();
                     close = true;
                 }
-                if pill_button(ui, Rect::from_min_size(pos2(right - 78.0, r.center().y - 15.0), vec2(78.0, 30.0)), "Snooze", BTN, "p2") {
+                if pill_button(ui, Rect::from_min_size(pos2(right - 78.0, r.center().y - 15.0), vec2(78.0, 30.0)), t("Snooze"), BTN, "p2") {
                     self.water_snooze = Some((self.now_min() + WATER_SNOOZE_MIN).min(1439));
                     close = true;
                 }
@@ -827,14 +913,14 @@ impl App {
             Kind::TaskStart(i) | Kind::TaskEnd(i) => {
                 let end = matches!(a.kind, Kind::TaskEnd(_));
                 check_circle(&p, icon, 13.0, false);
-                if pill_button(ui, Rect::from_min_size(pos2(right - 152.0, r.center().y - 15.0), vec2(70.0, 30.0)), "Done", GREEN_DARK, "p1") {
+                if pill_button(ui, Rect::from_min_size(pos2(right - 152.0, r.center().y - 15.0), vec2(70.0, 30.0)), t("Done"), GREEN_DARK, "p1") {
                     if let Some(t) = self.tasks.get_mut(i) {
                         t.done_day = Some(self.now.date());
                     }
                     data::save_tasks(&self.tasks);
                     close = true;
                 }
-                if pill_button(ui, Rect::from_min_size(pos2(right - 76.0, r.center().y - 15.0), vec2(76.0, 30.0)), "Later", BTN, "p2") {
+                if pill_button(ui, Rect::from_min_size(pos2(right - 76.0, r.center().y - 15.0), vec2(76.0, 30.0)), t("Later"), BTN, "p2") {
                     let m = self.now_min();
                     if let Some(t) = self.tasks.get_mut(i) {
                         t.snooze_until = m + self.s.snooze;
@@ -894,26 +980,31 @@ impl App {
                 p.circle_stroke(badge, 20.0, Stroke::new(1.5_f32, BLUE_DARK));
                 headphone_icon(&p, badge, 8.0, WHITE);
             }
-            Kind::Notice(ref app) => {
-                // App, title and (with preview on) the text, beside a green message badge.
-                let badge = Rect::from_center_size(icon, vec2(34.0, 34.0));
-                p.rect_filled(badge, 9.0, GREEN);
-                p.circle_filled(icon, 8.0, WHITE);
-                p.add(Shape::convex_polygon(vec![icon + vec2(-7.0, 3.0), icon + vec2(-3.0, 6.0), icon + vec2(-9.0, 9.0)], WHITE, Stroke::NONE));
-                p.circle_filled(icon, 5.0, GREEN);
+            Kind::Notice(ref app, _) => {
+                // One calm line: the app's initial in a dot, who sent it, then (preview on) what they said.
                 let y = r.center().y;
-                let (y_app, y_title) = if body.is_empty() { (y - 10.0, y + 10.0) } else { (y - 20.0, y) };
-                p.text(pos2(tx, y_app), Align2::LEFT_CENTER, app, reg(12.0), DIM);
-                p.text(pos2(right, y_app), Align2::RIGHT_CENTER, "now", reg(12.0), DIM);
-                p.text(pos2(tx, y_title), Align2::LEFT_CENTER, &title, bold(17.0), WHITE);
-                if !body.is_empty() {
-                    p.text(pos2(tx, y + 20.0), Align2::LEFT_CENTER, &body, reg(14.0), WHITE);
+                let dot = pos2(r.left() + 30.0, y);
+                p.circle_filled(dot, 12.0, GREEN);
+                let initial: String = app.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
+                p.text(dot, Align2::CENTER_CENTER, initial, bold(13.0), Color32::BLACK);
+                let x = dot.x + 22.0;
+                let room = r.right() - 22.0 - x;
+                let who = p.layout_no_wrap(ellipsize(&title, 28), bold(14.0), WHITE);
+                let ww = who.size().x.min(room);
+                p.galley(pos2(x, y - who.size().y / 2.0), who, WHITE);
+                if !body.is_empty() && room - ww > 40.0 {
+                    let fits = ((room - ww - 10.0) / 6.5) as usize; // about 6.5 px a character at 13 px
+                    p.text(pos2(x + ww + 10.0, y), Align2::LEFT_CENTER, ellipsize(&body, fits.max(4)), reg(13.0), DIM);
                 }
+            }
+            Kind::About => {
+                // A violet dot beside the name and version (title and body are drawn above).
+                ring(&p, icon, 14.0, 4.0, 1.0, PURPLE);
             }
             Kind::Info => {
                 // The original waits here with one button that starts the next part (0x14000143f).
                 ring(&p, icon, 14.0, 4.0, 1.0, PURPLE);
-                let label = if self.mode == Mode::Focus { "Focus" } else { "Break" };
+                let label = if self.mode == Mode::Focus { t("Focus") } else { t("Break") };
                 if pill_button(ui, Rect::from_min_size(pos2(right - 84.0, r.center().y - 15.0), vec2(84.0, 30.0)), label, Color32::from_rgb(76, 29, 149), "phase") {
                     self.running = true;
                     self.last_tick = Instant::now();
@@ -931,13 +1022,13 @@ impl App {
     fn page_title(&self, i: usize) -> (&'static str, &'static str, Color32) {
         match i {
             0 => ("", "", WHITE), // the album art sits where a title would be
-            1 => ("Pomodoro", "", WHITE),
-            2 => ("Water ", "Reminder", BLUE),
-            3 => ("Shelf", "", WHITE),
-            4 => ("Todo", "List", GREEN),
-            5 => ("Prayer", "", WHITE),
-            TODAY_PAGE => ("Today", "", WHITE),
-            _ => ("Widgets", "", WHITE),
+            1 => (t("Pomodoro"), "", WHITE),
+            2 => (t("Water "), t("Reminder"), BLUE),
+            3 => (t("Shelf"), "", WHITE),
+            4 => (t("Todo"), t("List"), GREEN),
+            5 => (t("Prayer"), "", WHITE),
+            TODAY_PAGE => (t("Today"), "", WHITE),
+            _ => (t("Widgets"), "", WHITE),
         }
     }
 
@@ -966,7 +1057,7 @@ impl App {
             let sub = if now.album.is_empty() { now.artist.clone() } else { format!("{} - {}", now.artist, now.album) };
             (now.title.clone(), sub)
         } else {
-            ("Nothing playing".to_string(), "Play music in any app".to_string())
+            (t("Nothing playing").to_string(), t("Play music in any app").to_string())
         };
         let max_chars = if lyr { 18 } else { 34 };
         p.text(pos2(tx, art.top() + 44.0), Align2::LEFT_CENTER, ellipsize(&title, max_chars), bold(18.0), WHITE);
@@ -1043,12 +1134,12 @@ impl App {
                 }
                 state => {
                     let msg = match state {
-                        media::LyricsState::Loading => "Loading lyrics…",
-                        _ if !now.active() => "Lyrics show here while music plays",
-                        _ => "No lyrics found for this song",
+                        media::LyricsState::Loading => t("Loading lyrics…"),
+                        _ if !now.active() => t("Lyrics show here while music plays"),
+                        _ => t("No lyrics found for this song"),
                     };
                     clip.text(pos2(col.left(), col.center().y), Align2::LEFT_CENTER, msg, bold(16.0), DIM);
-                    clip.text(pos2(col.left(), col.center().y + 24.0), Align2::LEFT_CENTER, "From LRCLIB, a community-contributed lyrics database", reg(11.0), FAINT);
+                    clip.text(pos2(col.left(), col.center().y + 24.0), Align2::LEFT_CENTER, t("From LRCLIB, a community-contributed lyrics database"), reg(11.0), FAINT);
                 }
             }
         }
@@ -1058,9 +1149,9 @@ impl App {
         let p = ui.painter().clone();
         let x = r.left() + 60.0;
         let label = match self.mode {
-            Mode::Focus => format!("Focus · {} of {LONG_BREAK_EVERY}", (self.rounds % LONG_BREAK_EVERY + 1).min(LONG_BREAK_EVERY)),
-            Mode::Short => "Short break".into(),
-            Mode::Long => "Long break".into(),
+            Mode::Focus => tr("Focus · {} of {}", &[&(self.rounds % LONG_BREAK_EVERY + 1).min(LONG_BREAK_EVERY), &LONG_BREAK_EVERY]),
+            Mode::Short => t("Short break").into(),
+            Mode::Long => t("Long break").into(),
         };
         p.text(pos2(x, r.top() + 50.0), Align2::LEFT_CENTER, label, reg(13.0), DIM);
         p.text(pos2(x - 2.0, r.top() + 80.0), Align2::LEFT_CENTER, mmss(self.left), bold(36.0), WHITE);
@@ -1068,15 +1159,15 @@ impl App {
         let tg = p.layout_no_wrap(done_at.format("%H:%M").to_string(), bold(16.0), WHITE);
         let tw = tg.size().x;
         p.galley(pos2(x, r.top() + 112.0 - tg.size().y / 2.0), tg, WHITE);
-        p.text(pos2(x + tw + 18.0, r.top() + 112.0), Align2::LEFT_CENTER, "until done", bold(15.0), PURPLE);
+        p.text(pos2(x + tw + 18.0, r.top() + 112.0), Align2::LEFT_CENTER, t("until done"), bold(15.0), PURPLE);
         let frac = 1.0 - (self.left / self.mode_len(self.mode)).clamp(0.0, 1.0) as f32;
         gradient_bar(&p, Rect::from_min_size(pos2(x, r.top() + 135.0), vec2(166.0, 5.0)), frac, PURPLE, Color32::from_rgb(99, 102, 241));
         p.line_segment([pos2(r.left() + 250.0, r.top() + 46.0), pos2(r.left() + 250.0, r.top() + 158.0)], Stroke::new(1.0_f32, Color32::from_gray(40)));
 
         let rx = r.left() + 268.0;
-        p.text(pos2(rx, r.top() + 52.0), Align2::LEFT_CENTER, "This round", reg(13.0), DIM);
+        p.text(pos2(rx, r.top() + 52.0), Align2::LEFT_CENTER, t("This round"), reg(13.0), DIM);
         let full = self.left >= self.mode_len(self.mode);
-        let text = if self.running { "Pause" } else if full { "Start" } else { "Resume" };
+        let text = if self.running { t("Pause") } else if full { t("Start") } else { t("Resume") };
         if pill_button(ui, Rect::from_min_size(pos2(r.left() + 380.0, r.top() + 40.0), vec2(78.0, 26.0)), text, BTN, "pp") {
             self.running = !self.running;
             self.last_tick = Instant::now();
@@ -1105,12 +1196,12 @@ impl App {
             if k < LONG_BREAK_EVERY {
                 p.circle_filled(pos2(sx + seg + 2.0, y), 3.0, if k < cur { Color32::from_rgb(45, 212, 191) } else { Color32::from_gray(38) });
             }
-            let lbl = if k == LONG_BREAK_EVERY { "Long".to_string() } else { (k + 1).to_string() };
+            let lbl = if k == LONG_BREAK_EVERY { t("Long").to_string() } else { (k + 1).to_string() };
             let lc = if active { WHITE } else { DIM };
             p.text(pos2(sx + w / 2.0, y + 22.0), Align2::CENTER_CENTER, lbl, bold(11.0), lc);
         }
         let total = LONG_BREAK_EVERY * self.s.focus + (LONG_BREAK_EVERY - 1) * self.s.short_break + self.s.long_break;
-        p.text(pos2(rx, r.top() + 143.0), Align2::LEFT_CENTER, format!("{} · {LONG_BREAK_EVERY} sessions", dur_text(total)), reg(12.0), DIM);
+        p.text(pos2(rx, r.top() + 143.0), Align2::LEFT_CENTER, tr("{} · {} sessions", &[&dur_text(total), &LONG_BREAK_EVERY]), reg(12.0), DIM);
     }
 
     fn page_water(&mut self, ui: &mut egui::Ui, r: Rect) {
@@ -1127,13 +1218,13 @@ impl App {
         }
         let pct = (self.drank * 100 / self.s.goal.max(1)).min(999);
         let status = if self.drank >= self.s.goal {
-            "Goal reached".to_string()
+            t("Goal reached").to_string()
         } else if !self.s.water {
-            "Reminders off".to_string()
+            t("Reminders off").to_string()
         } else {
-            self.next_water_slot().map(|t| format!("next {}", hm(t.ceil() as u32))).unwrap_or_else(|| "of your goal".into())
+            self.next_water_slot().map(|at| tr("next {}", &[&hm(at.ceil() as u32)])).unwrap_or_else(|| t("of your goal").into())
         };
-        let a = p.layout_no_wrap("Today · ".into(), reg(14.0), DIM);
+        let a = p.layout_no_wrap(t("Today · ").into(), reg(14.0), DIM);
         let b = p.layout_no_wrap(format!("{pct}%"), bold(14.0), BLUE);
         let (aw, bwid) = (a.size().x, b.size().x);
         let ty = r.top() + 98.0;
@@ -1142,10 +1233,10 @@ impl App {
         p.text(pos2(x + aw + bwid, ty), Align2::LEFT_CENTER, format!(" · {status}"), reg(14.0), DIM);
         gradient_bar(&p, Rect::from_min_size(pos2(x, r.top() + 112.0), vec2(196.0, 6.0)), self.drank as f32 / self.s.goal.max(1) as f32, Color32::from_rgb(56, 189, 248), BLUE);
         let each = self.s.water_plan().each;
-        if pill_button(ui, Rect::from_min_size(pos2(x, r.top() + 132.0), vec2(86.0, 32.0)), "Drink", BLUE_DARK, "drink") {
+        if pill_button(ui, Rect::from_min_size(pos2(x, r.top() + 132.0), vec2(86.0, 32.0)), t("Drink"), BLUE_DARK, "drink") {
             self.drink();
         }
-        let set_label = if self.water_settings { "Done" } else { "Settings" };
+        let set_label = if self.water_settings { t("Done") } else { t("Settings") };
         if pill_button(ui, Rect::from_min_size(pos2(x + 90.0, r.top() + 132.0), vec2(104.0, 32.0)), set_label, BTN, "wset") {
             self.water_settings = !self.water_settings;
         }
@@ -1197,7 +1288,7 @@ impl App {
         let p = ui.painter().clone();
         let lx = r.left();
         let vx = r.left() + 150.0;
-        let rows = [("Goal", 0.0), ("Bottle", 30.0), ("Hours", 60.0)];
+        let rows = [(t("Goal"), 0.0), (t("Bottle"), 30.0), (t("Hours"), 60.0)];
         for (name, dy) in rows {
             p.text(pos2(lx, r.top() + 14.0 + dy), Align2::LEFT_CENTER, name, reg(13.0), DIM);
         }
@@ -1226,9 +1317,9 @@ impl App {
         // "until" always stays at least an hour after "from" (original rule).
         self.s.until = until.max(from + MIN_SPAN).min(UNTIL_MAX);
         let plan = self.s.water_plan();
-        p.text(pos2(lx, y0 + 90.0), Align2::LEFT_CENTER, format!("{} reminders · {} refills · {} ml each", plan.reminders, plan.refills, plan.each), reg(12.0), DIM);
+        p.text(pos2(lx, y0 + 90.0), Align2::LEFT_CENTER, tr("{} reminders · {} refills · {} ml each", &[&plan.reminders, &plan.refills, &plan.each]), reg(12.0), DIM);
         let armed = self.reset_armed.is_some_and(|t| t.elapsed().as_secs_f32() < RESET_CONFIRM_SECS);
-        if pill_button(ui, Rect::from_min_size(pos2(r.right() - 64.0, y0 + 78.0), vec2(64.0, 24.0)), if armed { "Sure?" } else { "Reset" }, if armed { RED } else { BTN }, "reset") {
+        if pill_button(ui, Rect::from_min_size(pos2(r.right() - 64.0, y0 + 78.0), vec2(64.0, 24.0)), if armed { t("Sure?") } else { t("Reset") }, if armed { RED } else { BTN }, "reset") {
             if armed {
                 // Reset (0x140053982): today's total, the shown reminders, the hourly amounts, a full bottle.
                 self.drank = 0;
@@ -1268,7 +1359,7 @@ impl App {
         let files_over = ui.ctx().input(|i| !i.raw.hovered_files.is_empty());
         if self.shelf_view == ShelfView::Files || files_over {
             if !self.shelf.is_empty()
-                && pill_button(ui, Rect::from_min_size(pos2(r.left() + 80.0, r.top() + 13.0), vec2(50.0, 22.0)), "Clear", BTN, "clear")
+                && pill_button(ui, Rect::from_min_size(pos2(r.left() + 80.0, r.top() + 13.0), vec2(50.0, 22.0)), t("Clear"), BTN, "clear")
             {
                 self.shelf.clear();
                 self.save_shelf();
@@ -1276,9 +1367,9 @@ impl App {
             if self.shelf.is_empty() || files_over {
                 let col = if files_over { BLUE } else { Color32::from_gray(60) };
                 dashed_rect(&p, area.shrink2(vec2(4.0, 6.0)), col);
-                let t = if files_over { "Release to add" } else { "Drop files here" };
+                let t = if files_over { t("Release to add") } else { t("Drop files here") };
                 p.text(area.center() - vec2(0.0, 8.0), Align2::CENTER_CENTER, t, bold(15.0), WHITE);
-                p.text(area.center() + vec2(0.0, 14.0), Align2::CENTER_CENTER, "Drag out anytime · click to open", reg(12.0), DIM);
+                p.text(area.center() + vec2(0.0, 14.0), Align2::CENTER_CENTER, i18n::t("Drag out anytime · click to open"), reg(12.0), DIM);
                 return;
             }
             let (mut remove, mut drag) = (None, None);
@@ -1300,7 +1391,7 @@ impl App {
                 if resp.secondary_clicked() {
                     remove = Some(i);
                 }
-                resp.on_hover_text("Click to open · drag out · right-click to remove");
+                resp.on_hover_text(t("Click to open · drag out · right-click to remove"));
             }
             if let Some(path) = drag {
                 dragout::files(&[path]);
@@ -1311,13 +1402,13 @@ impl App {
             }
         } else {
             if !self.s.clipboard {
-                p.text(area.center() - vec2(0.0, 8.0), Align2::CENTER_CENTER, "Clipboard history is off", bold(15.0), WHITE);
-                p.text(area.center() + vec2(0.0, 14.0), Align2::CENTER_CENTER, "Turn it on in Settings (right-click the notch)", reg(12.0), DIM);
+                p.text(area.center() - vec2(0.0, 8.0), Align2::CENTER_CENTER, t("Clipboard history is off"), bold(15.0), WHITE);
+                p.text(area.center() + vec2(0.0, 14.0), Align2::CENTER_CENTER, t("Turn it on in Settings (right-click the notch)"), reg(12.0), DIM);
                 return;
             }
             if self.clips.is_empty() {
-                p.text(area.center() - vec2(0.0, 8.0), Align2::CENTER_CENTER, "Copy some text", bold(15.0), WHITE);
-                p.text(area.center() + vec2(0.0, 14.0), Align2::CENTER_CENTER, "It will wait here, ready to paste again", reg(12.0), DIM);
+                p.text(area.center() - vec2(0.0, 8.0), Align2::CENTER_CENTER, t("Copy some text"), bold(15.0), WHITE);
+                p.text(area.center() + vec2(0.0, 14.0), Align2::CENTER_CENTER, t("It will wait here, ready to paste again"), reg(12.0), DIM);
                 return;
             }
             let (mut copy, mut drag) = (None, None);
@@ -1333,7 +1424,7 @@ impl App {
                     p.rect_stroke(card, 12.0, Stroke::new(1.5_f32, Color32::from_rgb(99, 102, 241)), egui::StrokeKind::Inside);
                 }
                 let just = self.copied.as_ref().is_some_and(|(c, at)| c == text && at.elapsed().as_secs() < 2);
-                let body = if just { "Copied".to_string() } else { text.clone() };
+                let body = if just { t("Copied").to_string() } else { text.clone() };
                 let g = p.layout(body, bold(12.0), WHITE, card.width() - 22.0);
                 let rows: Vec<_> = g.rows.iter().take(3).collect();
                 let clipped = rows.len() < g.rows.len();
@@ -1345,7 +1436,7 @@ impl App {
                     copy = Some(text.clone());
                 }
             }
-            p.text(pos2(area.left() + 4.0, r.top() + 168.0), Align2::LEFT_CENTER, format!("{} items · click to copy · drag into a chat", self.clips.len()), reg(12.0), DIM);
+            p.text(pos2(area.left() + 4.0, r.top() + 168.0), Align2::LEFT_CENTER, tr("{} items · click to copy · drag into a chat", &[&self.clips.len()]), reg(12.0), DIM);
             if let Some(t) = drag {
                 dragout::text(&t);
             }
@@ -1365,11 +1456,11 @@ impl App {
         let x = r.left() + 58.0;
         let done = self.done_today();
         p.text(pos2(x, r.top() + 64.0), Align2::LEFT_CENTER, format!("{done}/{}", self.tasks.len()), bold(36.0), WHITE);
-        p.text(pos2(x, r.top() + 96.0), Align2::LEFT_CENTER, "Task Done Today", reg(14.0), DIM);
-        if pill_button(ui, Rect::from_min_size(pos2(x - 4.0, r.top() + 120.0), vec2(90.0, 32.0)), "Add Task", BTN, "add") {
+        p.text(pos2(x, r.top() + 96.0), Align2::LEFT_CENTER, t("Task Done Today"), reg(14.0), DIM);
+        if pill_button(ui, Rect::from_min_size(pos2(x - 4.0, r.top() + 120.0), vec2(90.0, 32.0)), t("Add Task"), BTN, "add") {
             self.form = Some((None, String::new(), String::new(), 0));
         }
-        let edit_label = if self.todo_edit { "Done" } else { "Edit Task" };
+        let edit_label = if self.todo_edit { t("Done") } else { t("Edit Task") };
         if pill_button(ui, Rect::from_min_size(pos2(x + 92.0, r.top() + 120.0), vec2(90.0, 32.0)), edit_label, BTN, "edit") {
             self.todo_edit = !self.todo_edit;
         }
@@ -1380,20 +1471,20 @@ impl App {
             let mut save = false;
             ui.allocate_new_ui(egui::UiBuilder::new().max_rect(list), |ui| {
                 ui.spacing_mut().item_spacing.y = 6.0;
-                ui.label(egui::RichText::new(if idx.is_some() { "Edit Task" } else { "Add Task" }).font(bold(14.0)));
-                ui.add(egui::TextEdit::singleline(title).hint_text("Task title").desired_width(list.width()));
+                ui.label(egui::RichText::new(if idx.is_some() { t("Edit Task") } else { t("Add Task") }).font(bold(14.0)));
+                ui.add(egui::TextEdit::singleline(title).hint_text(t("Task title")).desired_width(list.width()));
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("Starts").color(DIM));
+                    ui.label(egui::RichText::new(t("Starts")).color(DIM));
                     ui.add(egui::TextEdit::singleline(time).hint_text("HH:MM").desired_width(52.0));
-                    ui.label(egui::RichText::new("for").color(DIM));
-                    ui.add(egui::DragValue::new(dur).range(0..=480).suffix(" min"));
+                    ui.label(egui::RichText::new(t("for")).color(DIM));
+                    ui.add(egui::DragValue::new(dur).range(0..=480).suffix(t(" min")));
                 });
                 let ok = !title.trim().is_empty() && (time.trim().is_empty() || parse_hm(time).is_some());
                 ui.horizontal(|ui| {
-                    if ui.add_enabled(ok, egui::Button::new("Save").corner_radius(12.0)).clicked() {
+                    if ui.add_enabled(ok, egui::Button::new(t("Save")).corner_radius(12.0)).clicked() {
                         save = true;
                     }
-                    if ui.add(egui::Button::new("Cancel").corner_radius(12.0)).clicked() {
+                    if ui.add(egui::Button::new(t("Cancel")).corner_radius(12.0)).clicked() {
                         close = true;
                     }
                 });
@@ -1413,7 +1504,7 @@ impl App {
         }
 
         if self.tasks.is_empty() {
-            p.text(list.center(), Align2::CENTER_CENTER, "No tasks.", reg(14.0), DIM);
+            p.text(list.center(), Align2::CENTER_CENTER, t("No tasks."), reg(14.0), DIM);
             return;
         }
         let mut toggle_i = None;
@@ -1471,24 +1562,25 @@ impl App {
         let p = ui.painter().clone();
         let x = r.left() + 60.0;
         if !self.s.prayer {
-            p.text(pos2(x, r.top() + 70.0), Align2::LEFT_CENTER, "Prayer times", bold(26.0), WHITE);
-            p.text(pos2(x, r.top() + 100.0), Align2::LEFT_CENTER, "are off", reg(15.0), DIM);
-            if pill_button(ui, Rect::from_min_size(pos2(x, r.top() + 122.0), vec2(150.0, 30.0)), "Turn on", BLUE_DARK, "pon") {
+            p.text(pos2(x, r.top() + 70.0), Align2::LEFT_CENTER, t("Prayer times"), bold(26.0), WHITE);
+            p.text(pos2(x, r.top() + 100.0), Align2::LEFT_CENTER, t("are off"), reg(15.0), DIM);
+            if pill_button(ui, Rect::from_min_size(pos2(x, r.top() + 122.0), vec2(150.0, 30.0)), t("Turn on"), BLUE_DARK, "pon") {
                 self.s.prayer = true;
                 self.s.save();
             }
             return;
         }
         let today = self.today();
-        let city = prayer::CITIES[self.s.prayer_city].1;
+        let city = self.city_name();
+        let city = city.as_str();
         p.text(pos2(r.left() + 100.0, r.top() + 24.0), Align2::LEFT_CENTER, city, reg(13.0), DIM);
         let t = self.prayer_times(today);
         let m = self.now_min();
         let now_f = m as f32 + self.now.second() as f32 / 60.0;
         let next = t.iter().position(|&x| x > m);
         let (name, at, label) = match next {
-            Some(i) => (prayer::NAMES[i], t[i], "Next"),
-            None => (prayer::NAMES[0], self.prayer_times(today + Duration::days(1))[0], "Next, tomorrow"),
+            Some(i) => (prayer::NAMES[i], t[i], i18n::t("Next")),
+            None => (prayer::NAMES[0], self.prayer_times(today + Duration::days(1))[0], i18n::t("Next, tomorrow")),
         };
         p.text(pos2(x, r.top() + 46.0), Align2::LEFT_CENTER, label, reg(13.0), DIM);
         p.text(pos2(x - 1.0, r.top() + 76.0), Align2::LEFT_CENTER, name, bold(32.0), WHITE);
@@ -1496,7 +1588,7 @@ impl App {
         let ag = p.layout_no_wrap(hm(at), bold(17.0), WHITE);
         let aw = ag.size().x;
         p.galley(pos2(x, r.top() + 112.0 - ag.size().y / 2.0), ag, WHITE);
-        p.text(pos2(x + aw + 18.0, r.top() + 112.0), Align2::LEFT_CENTER, format!("in {}", dur_text(until as u32)), bold(15.0), BLUE);
+        p.text(pos2(x + aw + 18.0, r.top() + 112.0), Align2::LEFT_CENTER, tr("in {}", &[&dur_text(until as u32)]), bold(15.0), BLUE);
         let prev = next.and_then(|i| i.checked_sub(1)).map(|i| t[i]).unwrap_or(t[4]);
         let gap = (at as i64 - prev as i64).rem_euclid(1440).max(1) as f32;
         let frac = 1.0 - until as f32 / gap;
@@ -1554,17 +1646,17 @@ impl App {
         let a = Rect::from_min_size(pos2(r.left() + 56.0, r.top() + 42.0), vec2(212.0, 126.0));
         let b = Rect::from_min_size(pos2(r.left() + 280.0, r.top() + 42.0), vec2(212.0, 126.0));
         p.rect_filled(a, 14.0, CARD);
-        p.text(a.min + vec2(14.0, 15.0), Align2::LEFT_CENTER, "NOTIFICATIONS", bold(11.0), DIM);
+        p.text(a.min + vec2(14.0, 15.0), Align2::LEFT_CENTER, t("NOTIFICATIONS"), bold(11.0), DIM);
         if self.recent.is_empty() {
-            p.text(a.center() - vec2(0.0, 4.0), Align2::CENTER_CENTER, "No new notifications", bold(13.0), WHITE);
-            let hint = if self.s.notifications { "New ones show up here" } else { "Notifications are off in Settings" };
+            p.text(a.center() - vec2(0.0, 4.0), Align2::CENTER_CENTER, t("No new notifications"), bold(13.0), WHITE);
+            let hint = if self.s.notifications { t("New ones show up here") } else { t("Notifications are off in Settings") };
             p.text(a.center() + vec2(0.0, 16.0), Align2::CENTER_CENTER, hint, reg(11.0), DIM);
         } else {
-            if pill_button(ui, Rect::from_min_size(pos2(a.right() - 58.0, a.top() + 6.0), vec2(48.0, 18.0)), "Clear", BTN, "today_clear") {
+            if pill_button(ui, Rect::from_min_size(pos2(a.right() - 58.0, a.top() + 6.0), vec2(48.0, 18.0)), t("Clear"), BTN, "today_clear") {
                 self.recent.clear();
             }
             let now = Utc::now().timestamp();
-            for (k, (ts, (app, title, body))) in self.recent.iter().take(3).enumerate() {
+            for (k, (ts, (app, title, body, _))) in self.recent.iter().take(3).enumerate() {
                 let y = a.top() + 40.0 + k as f32 * 30.0;
                 p.text(pos2(a.left() + 14.0, y - 7.0), Align2::LEFT_CENTER, ellipsize(app, 20), reg(10.0), DIM);
                 p.text(pos2(a.right() - 14.0, y - 7.0), Align2::RIGHT_CENTER, ago(now - ts), reg(10.0), DIM);
@@ -1581,13 +1673,13 @@ impl App {
         let today = self.today();
         match kind {
             0 => {
-                title("THIS WEEK");
+                title(t("THIS WEEK"));
                 let ws = if self.s.week_monday { Weekday::Mon } else { Weekday::Sun };
                 let start = today.week(ws).first_day();
                 for k in 0..7 {
                     let d = start + Duration::days(k);
                     let cx = r.left() + 23.0 + k as f32 * 27.5;
-                    let letter = &d.format("%a").to_string()[..1];
+                    let letter = i18n::day_letter(d.weekday());
                     p.text(pos2(cx, r.top() + 36.0), Align2::CENTER_CENTER, letter, bold(10.0), DIM);
                     let col = if d < today { DIM } else { WHITE };
                     if d == today {
@@ -1597,13 +1689,13 @@ impl App {
                 }
                 let open = self.tasks.iter().filter(|t| t.done_day.is_none()).count();
                 p.circle_filled(pos2(r.left() + 18.0, r.top() + 95.0), 4.0, GREEN);
-                p.text(pos2(r.left() + 28.0, r.top() + 95.0), Align2::LEFT_CENTER, format!("{open} tasks today"), bold(12.0), WHITE);
+                p.text(pos2(r.left() + 28.0, r.top() + 95.0), Align2::LEFT_CENTER, tr("{} tasks today", &[&open]), bold(12.0), WHITE);
                 let next = self.tasks.iter().filter(|t| t.done_day.is_none() && t.start.is_some_and(|s| s as u32 >= self.now_min())).min_by_key(|t| t.start);
-                let line = next.map(|t| format!("Next: {}, {}", ellipsize(&t.title, 16), hm(t.start.unwrap() as u32))).unwrap_or_else(|| "Nothing scheduled".into());
+                let line = next.map(|task| tr("Next: {}, {}", &[&ellipsize(&task.title, 16), &hm(task.start.unwrap() as u32)])).unwrap_or_else(|| t("Nothing scheduled").into());
                 p.text(pos2(r.left() + 28.0, r.top() + 111.0), Align2::LEFT_CENTER, line, reg(11.0), DIM);
             }
             1 => {
-                title("BATTERY");
+                title(t("BATTERY"));
                 let c = pos2(r.left() + 50.0, r.top() + 72.0);
                 match self.battery {
                     Some((pct, ac)) => {
@@ -1611,19 +1703,19 @@ impl App {
                         ring(p, c, 28.0, 6.0, pct as f32 / 100.0, col);
                         if ac { bolt(p, c, 11.0, WHITE) } else { p.text(c, Align2::CENTER_CENTER, format!("{pct}"), bold(14.0), WHITE); }
                         p.text(pos2(r.left() + 92.0, r.top() + 50.0), Align2::LEFT_CENTER, format!("{pct}%"), bold(24.0), WHITE);
-                        p.text(pos2(r.left() + 92.0, r.top() + 76.0), Align2::LEFT_CENTER, if ac { "Charging" } else { "On battery" }, bold(12.0), if ac { GREEN } else { WHITE });
-                        p.text(pos2(r.left() + 92.0, r.top() + 93.0), Align2::LEFT_CENTER, if ac { "Plugged in" } else { "Unplugged" }, reg(11.0), DIM);
+                        p.text(pos2(r.left() + 92.0, r.top() + 76.0), Align2::LEFT_CENTER, if ac { t("Charging") } else { t("On battery") }, bold(12.0), if ac { GREEN } else { WHITE });
+                        p.text(pos2(r.left() + 92.0, r.top() + 93.0), Align2::LEFT_CENTER, if ac { t("Plugged in") } else { t("Unplugged") }, reg(11.0), DIM);
                     }
                     None => {
                         ring(p, c, 28.0, 6.0, 1.0, GREEN);
                         bolt(p, c, 11.0, WHITE);
-                        p.text(pos2(r.left() + 92.0, r.top() + 62.0), Align2::LEFT_CENTER, "Plugged in", bold(14.0), WHITE);
-                        p.text(pos2(r.left() + 92.0, r.top() + 82.0), Align2::LEFT_CENTER, "No battery", reg(11.0), DIM);
+                        p.text(pos2(r.left() + 92.0, r.top() + 62.0), Align2::LEFT_CENTER, t("Plugged in"), bold(14.0), WHITE);
+                        p.text(pos2(r.left() + 92.0, r.top() + 82.0), Align2::LEFT_CENTER, t("No battery"), reg(11.0), DIM);
                     }
                 }
             }
             2 => {
-                title("NEXT PRAYER");
+                title(t("NEXT PRAYER"));
                 if self.s.prayer {
                     let t = self.prayer_times(today);
                     let m = self.now_min();
@@ -1633,14 +1725,14 @@ impl App {
                     };
                     p.text(pos2(r.left() + 14.0, r.top() + 56.0), Align2::LEFT_CENTER, name, bold(26.0), WHITE);
                     p.text(pos2(r.left() + 14.0, r.top() + 88.0), Align2::LEFT_CENTER, hm(at), bold(16.0), BLUE);
-                    p.text(pos2(r.left() + 14.0, r.top() + 108.0), Align2::LEFT_CENTER, prayer::CITIES[self.s.prayer_city].1, reg(11.0), DIM);
+                    p.text(pos2(r.left() + 14.0, r.top() + 108.0), Align2::LEFT_CENTER, self.city_name(), reg(11.0), DIM);
                 } else {
-                    p.text(pos2(r.left() + 14.0, r.top() + 60.0), Align2::LEFT_CENTER, "Prayer times", bold(16.0), WHITE);
-                    p.text(pos2(r.left() + 14.0, r.top() + 80.0), Align2::LEFT_CENTER, "are off", reg(12.0), DIM);
+                    p.text(pos2(r.left() + 14.0, r.top() + 60.0), Align2::LEFT_CENTER, t("Prayer times"), bold(16.0), WHITE);
+                    p.text(pos2(r.left() + 14.0, r.top() + 80.0), Align2::LEFT_CENTER, t("are off"), reg(12.0), DIM);
                 }
             }
             3 => {
-                title("FOCUS TODAY");
+                title(t("FOCUS TODAY"));
                 p.text(pos2(r.left() + 14.0, r.top() + 58.0), Align2::LEFT_CENTER, dur_text(self.focus_today()), bold(24.0), WHITE);
                 let days: Vec<u32> = (0..7).rev().map(|i| self.focus_log.get(&(today - Duration::days(i))).copied().unwrap_or(0)).collect();
                 let max = days.iter().copied().max().unwrap_or(0).max(1) as f32;
@@ -1651,7 +1743,7 @@ impl App {
                 }
             }
             4 => {
-                title("WORLD CLOCK");
+                title(t("WORLD CLOCK"));
                 for (k, idx) in [self.s.widget_city1, self.s.widget_city2].into_iter().enumerate() {
                     let (name, _, _) = WORLD[idx.min(WORLD.len() - 1)];
                     let y = r.top() + 50.0 + k as f32 * 40.0;
@@ -1660,130 +1752,245 @@ impl App {
                 }
             }
             5 => {
-                title("MOON");
+                title(t("MOON"));
                 let (phase, lit) = moon(Utc::now().naive_utc());
                 let c = pos2(r.left() + 46.0, r.top() + 72.0);
                 p.circle_filled(c, 24.0, Color32::from_gray(45));
                 p.circle_filled(c + vec2(48.0 * (1.0 - lit as f32) * if phase < 4 { -1.0 } else { 1.0 }, 0.0), 24.0, CARD);
                 p.circle_stroke(c, 24.0, Stroke::new(1.0_f32, Color32::from_gray(70)));
-                p.text(pos2(r.left() + 84.0, r.top() + 62.0), Align2::LEFT_CENTER, MOON[phase], bold(13.0), WHITE);
-                p.text(pos2(r.left() + 84.0, r.top() + 82.0), Align2::LEFT_CENTER, format!("{:.0}% lit", lit * 100.0), reg(12.0), DIM);
+                p.text(pos2(r.left() + 84.0, r.top() + 62.0), Align2::LEFT_CENTER, t(MOON[phase]), bold(13.0), WHITE);
+                p.text(pos2(r.left() + 84.0, r.top() + 82.0), Align2::LEFT_CENTER, tr("{}% lit", &[&format!("{:.0}", lit * 100.0)]), reg(12.0), DIM);
             }
             6 => {
-                title("COUNTDOWN");
+                title(t("COUNTDOWN"));
                 let ev = self.s.widget_event.min(EVENTS.len() - 1);
                 let (big, small) = match next_event(today, ev) {
-                    Some(d) if d == today => ("Today".to_string(), EVENTS[ev].to_string()),
-                    Some(d) => ((d - today).num_days().to_string(), format!("days to {}", EVENTS[ev])),
-                    None => ("—".into(), EVENTS[ev].to_string()),
+                    Some(d) if d == today => (t("Today").to_string(), t(EVENTS[ev]).to_string()),
+                    Some(d) => ((d - today).num_days().to_string(), tr("days to {}", &[&t(EVENTS[ev])])),
+                    None => ("—".into(), t(EVENTS[ev]).to_string()),
                 };
                 p.text(pos2(r.left() + 14.0, r.top() + 60.0), Align2::LEFT_CENTER, big, bold(32.0), WHITE);
                 p.text(pos2(r.left() + 14.0, r.top() + 96.0), Align2::LEFT_CENTER, small, reg(12.0), DIM);
             }
             _ => {
-                title("WATER");
+                title(t("WATER"));
                 let c = pos2(r.left() + 50.0, r.top() + 72.0);
                 ring(p, c, 28.0, 6.0, self.drank as f32 / self.s.goal.max(1) as f32, BLUE);
                 drop_icon(p, c, 10.0, BLUE);
                 p.text(pos2(r.left() + 92.0, r.top() + 60.0), Align2::LEFT_CENTER, format!("{:.1} L", self.drank as f32 / 1000.0), bold(22.0), WHITE);
-                p.text(pos2(r.left() + 92.0, r.top() + 84.0), Align2::LEFT_CENTER, format!("of {:.1} L", self.s.goal as f32 / 1000.0), reg(12.0), DIM);
+                p.text(pos2(r.left() + 92.0, r.top() + 84.0), Align2::LEFT_CENTER, tr("of {} L", &[&format!("{:.1}", self.s.goal as f32 / 1000.0)]), reg(12.0), DIM);
             }
         }
     }
 
+    /// Ask Nusa: a sum ending in "=" answers as you type; questions go to Gemini (needs a key).
+    fn page_ask(&mut self, ui: &mut egui::Ui, r: Rect) {
+        let p = ui.painter().clone();
+        p.text(pos2(r.left() + 22.0, r.top() + 24.0), Align2::LEFT_CENTER, t("Ask Nusa"), bold(17.0), WHITE);
+        if pill_button(ui, Rect::from_min_size(pos2(r.right() - 76.0, r.top() + 12.0), vec2(56.0, 24.0)), t("Close"), BTN, "aclose") {
+            self.ask_open = false;
+            return;
+        }
+        let field = Rect::from_min_size(pos2(r.left() + 22.0, r.top() + 48.0), vec2(r.width() - 44.0, 34.0));
+        p.rect_filled(field, 17.0, CARD);
+        settings_style(ui);
+        let edit = ui.put(
+            field.shrink2(vec2(14.0, 7.0)),
+            egui::TextEdit::singleline(&mut self.ask_text).hint_text(t("Ask anything, or a sum like 12*3=")).frame(false).font(reg(15.0)),
+        );
+        if std::mem::take(&mut self.ask_focus) {
+            edit.request_focus();
+        }
+        let enter = edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.ask_open = false;
+            self.held = false;
+            return;
+        }
+        let q = self.ask_text.trim();
+        if edit.changed() || enter {
+            self.ask_answer = match calc::eval(q) {
+                // A sum answers once it ends with "=", or on Enter.
+                Some(v) if q.ends_with('=') || enter => format!("= {}", calc::show(v)),
+                Some(_) => String::new(),
+                None if enter && !q.is_empty() => t("Ask Nusa needs a Gemini key — add one in Settings").to_string(),
+                None => String::new(),
+            };
+            if enter {
+                edit.request_focus();
+            }
+        }
+        if !self.ask_answer.is_empty() {
+            let big = self.ask_answer.starts_with('=');
+            let (font, col) = if big { (bold(30.0), WHITE) } else { (reg(14.0), DIM) };
+            p.text(pos2(r.left() + 30.0, r.top() + 116.0), Align2::LEFT_CENTER, &self.ask_answer, font, col);
+        }
+        p.text(pos2(r.center().x, r.bottom() - 14.0), Align2::CENTER_CENTER, t("Enter to ask · Esc to close"), reg(11.0), DIM);
+    }
+
     fn page_settings(&mut self, ui: &mut egui::Ui, r: Rect) {
         let before = self.s.clone();
-        let inner = Rect::from_min_max(pos2(r.left() + 22.0, r.top() + 42.0), pos2(r.right() - 22.0, r.bottom() - 8.0));
+        let locating = self.locating.clone();
+        let inner = Rect::from_min_max(pos2(r.left() + 18.0, r.top() + 44.0), pos2(r.right() - 18.0, r.bottom() - 10.0));
+        settings_style(ui);
         ui.allocate_new_ui(egui::UiBuilder::new().max_rect(inner), |ui| {
             let s = &mut self.s;
             egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-                section(ui, "General");
-                ui.checkbox(&mut s.startup, "Start with Windows");
-                combo(ui, "Size", &mut s.size, &SIZE_NAMES);
-                ui.checkbox(&mut s.minimal, "Minimal notch — a smaller pill when nothing is running");
-                ui.checkbox(&mut s.mascot, "Mascot — a little friend that lives in the notch");
-                let mut oc = s.open_click as usize;
-                if combo(ui, "Open the notch on", &mut oc, &["Hover", "Click"]) {
-                    s.open_click = oc == 1;
-                }
-                combo(ui, "Status ring", &mut s.status_ring, &["Water", "Tasks done today", "No ring"]);
-                ui.checkbox(&mut s.sound, "Reminder sounds — chimes for Pomodoro, To-do and Water");
-
-                section(ui, "Pomodoro");
-                ui.horizontal(|ui| {
-                    ui.label("Focus");
-                    ui.add(egui::DragValue::new(&mut s.focus).range(1..=120).suffix(" min"));
-                    ui.label("Short break");
-                    ui.add(egui::DragValue::new(&mut s.short_break).range(1..=60).suffix(" min"));
-                    ui.label("Long break");
-                    ui.add(egui::DragValue::new(&mut s.long_break).range(1..=60).suffix(" min"));
+                ui.set_width(ui.available_width() - 8.0); // room for the scroll bar
+                card(ui, "General", |ui| {
+                    combo(ui, "Language", &mut s.language, &i18n::NAMES);
+                    switch_row(ui, "Start with Windows", &mut s.startup);
+                    combo(ui, "Size", &mut s.size, &SIZE_NAMES);
+                    switch_row(ui, "Show the date and time — the clock in the notch and on each page", &mut s.show_clock);
+                    combo(ui, "Tray icon", &mut s.app_icon, &tray::ICON_NAMES);
+                    switch_row(ui, "Minimal notch — shrinks to a thin bar when nothing is going on", &mut s.minimal);
+                    switch_row(ui, "Mascot — a little friend that lives in the notch", &mut s.mascot);
+                    let mut oc = s.open_click as usize;
+                    if combo(ui, "Open the notch on", &mut oc, &["Hover", "Click"]) {
+                        s.open_click = oc == 1;
+                    }
+                    combo(ui, "Status ring", &mut s.status_ring, &["Water", "Tasks done today", "No ring"]);
+                    switch_row(ui, "Reminder sounds — chimes for Pomodoro, To-do and Water", &mut s.sound);
                 });
-
-                section(ui, "To-do reminders");
-                ui.checkbox(&mut s.todo_start, "When a task starts");
-                ui.checkbox(&mut s.todo_end, "When time is up");
-                let mut sn = SNOOZES.iter().position(|&l| l == s.snooze).unwrap_or(1);
-                if combo(ui, "\"Later\" waits", &mut sn, &["5 min", "10 min", "15 min"]) {
-                    s.snooze = SNOOZES[sn];
-                }
-
-                section(ui, "Prayer times (Kemenag RI method)");
-                ui.checkbox(&mut s.prayer, "Show prayer times");
-                let names: Vec<String> = prayer::CITIES.iter().map(|c| format!("{} — {}", c.1, c.0)).collect();
-                let refs: Vec<&str> = names.iter().map(|n| n.as_str()).collect();
-                combo(ui, "City", &mut s.prayer_city, &refs);
-                ui.checkbox(&mut s.prayer_reminder, "Remind me at prayer time");
-                ui.checkbox(&mut s.prayer_early, "Also 10 minutes before");
-                ui.checkbox(&mut s.prayer_pause_media, "Pause media at prayer time");
-                ui.horizontal(|ui| {
-                    ui.label("Adjust (min)");
-                    for (i, name) in prayer::NAMES.iter().enumerate() {
-                        ui.label(*name);
-                        ui.add(egui::DragValue::new(&mut s.prayer_adj[i]).range(-10..=10));
+                card(ui, "Pomodoro", |ui| {
+                    number(ui, "Focus", &mut s.focus, 1..=120, " min");
+                    number(ui, "Short break", &mut s.short_break, 1..=60, " min");
+                    number(ui, "Long break", &mut s.long_break, 1..=60, " min");
+                });
+                card(ui, "To-do reminders", |ui| {
+                    switch_row(ui, "When a task starts", &mut s.todo_start);
+                    switch_row(ui, "When time is up", &mut s.todo_end);
+                    let mut sn = SNOOZES.iter().position(|&l| l == s.snooze).unwrap_or(1);
+                    if combo(ui, "\"Later\" waits", &mut sn, &["5 min", "10 min", "15 min"]) {
+                        s.snooze = SNOOZES[sn];
                     }
                 });
-
-                section(ui, "Shelf");
-                ui.checkbox(&mut s.shelf_clear, "Start with an empty Shelf");
-                ui.checkbox(&mut s.clipboard, "Clipboard history — text you copy, ready to paste again");
-                ui.horizontal(|ui| {
-                    ui.label("Keep up to");
-                    ui.add(egui::DragValue::new(&mut s.clipboard_max).range(1..=CLIP_MAX_FREE).suffix(" items"));
+                card(ui, "Prayer times", |ui| {
+                    switch_row(ui, "Show prayer times — worked out on this PC, for any city", &mut s.prayer);
+                    ui.add_enabled_ui(s.prayer, |ui| {
+                        let names: Vec<String> = (0..prayer::place_count())
+                            .map(|i| if i == prayer::here_index() { t("My location").into() } else { let (r, c) = prayer::place_name(i); format!("{c} — {r}") })
+                            .collect();
+                        let refs: Vec<&str> = names.iter().map(|n| n.as_str()).collect();
+                        combo(ui, "City", &mut s.prayer_city, &refs);
+                        if s.prayer_city == prayer::here_index() {
+                            let state = *locating.lock().unwrap();
+                            let label = match state {
+                                Locating::Busy => t("Finding where you are…").to_string(),
+                                Locating::Failed => t("Couldn't find your location — check Windows Settings › Privacy › Location, or pick a city").to_string(),
+                                _ if s.prayer_lat == 0.0 && s.prayer_lon == 0.0 => t("Not found yet").to_string(),
+                                _ => format!("{:.2}, {:.2}", s.prayer_lat, s.prayer_lon),
+                            };
+                            row(ui, "Find my location", |ui| {
+                                if move_button(ui, "⌖", t("Find my location")) && state != Locating::Busy {
+                                    *locating.lock().unwrap() = Locating::Busy;
+                                    let out = locating.clone();
+                                    std::thread::spawn(move || {
+                                        *out.lock().unwrap() = media::locate().map_or(Locating::Failed, |(a, b)| Locating::Got(a, b));
+                                        tray::wake();
+                                    });
+                                }
+                                ui.add_space(8.0);
+                                ui.label(egui::RichText::new(label).font(reg(12.0)).color(DIM));
+                            });
+                        }
+                        let mut methods: Vec<&str> = vec![t("Usual for the city")];
+                        methods.extend(prayer::METHODS.iter().map(|m| m.name));
+                        combo(ui, "Method", &mut s.prayer_method, &methods);
+                        switch_row(ui, "Remind me at prayer time", &mut s.prayer_reminder);
+                        ui.add_enabled_ui(s.prayer_reminder, |ui| switch_row(ui, "Also 10 minutes before", &mut s.prayer_early));
+                        switch_row(ui, "Pause media at prayer time", &mut s.prayer_pause_media);
+                        row_label(ui, "Adjust — minutes added to each time", 40.0);
+                        ui.columns(prayer::NAMES.len(), |cols| {
+                            for (i, c) in cols.iter_mut().enumerate() {
+                                c.vertical_centered(|c| {
+                                    c.label(egui::RichText::new(prayer::NAMES[i]).font(reg(12.0)).color(DIM));
+                                    c.add(egui::DragValue::new(&mut s.prayer_adj[i]).range(-10..=10));
+                                });
+                            }
+                        });
+                        ui.add_space(8.0);
+                    });
                 });
-                ui.checkbox(&mut s.clipboard_keep, "Remember after restart");
-
-                section(ui, "Popups");
-                ui.checkbox(&mut s.hud_volume, "Volume indicator");
-                ui.checkbox(&mut s.hud_brightness, "Brightness indicator");
-                ui.checkbox(&mut s.hud_caps, "Caps Lock indicator");
-                ui.checkbox(&mut s.hud_language, "Input language indicator");
-                ui.checkbox(&mut s.popup_battery, "Battery");
-                ui.checkbox(&mut s.popup_wifi, "Wi-Fi");
-                ui.checkbox(&mut s.popup_bluetooth, "Bluetooth headset");
-                ui.checkbox(&mut s.notifications, "Notifications — new Windows notifications show in the notch (after restart)");
-                ui.checkbox(&mut s.notification_preview, "Show the message text");
-                ui.checkbox(&mut s.today_page, "Today page — recent notifications and your week");
-                ui.checkbox(&mut s.hide_fullscreen, "Hide in full screen — games, videos and slides that fill the screen");
-
-                section(ui, "Music and lyrics");
-                ui.checkbox(&mut s.lyrics, "Show lyrics — from LRCLIB, a community-contributed lyrics database (after restart)");
-
-                section(ui, "Widgets");
-                combo(ui, "Left widget", &mut s.widget_left, &WIDGETS);
-                combo(ui, "Right widget", &mut s.widget_right, &WIDGETS);
-                let cities: Vec<&str> = WORLD.iter().map(|w| w.0).collect();
-                combo(ui, "World clock, first city", &mut s.widget_city1, &cities);
-                combo(ui, "World clock, second city", &mut s.widget_city2, &cities);
-                combo(ui, "Countdown to", &mut s.widget_event, &EVENTS);
-                let mut wm = s.week_monday as usize;
-                if combo(ui, "Week starts on", &mut wm, &["Sunday", "Monday"]) {
-                    s.week_monday = wm == 1;
-                }
+                card(ui, "Shelf", |ui| {
+                    switch_row(ui, "Start with an empty Shelf", &mut s.shelf_clear);
+                    switch_row(ui, "Clipboard history — text you copy, ready to paste again", &mut s.clipboard);
+                    ui.add_enabled_ui(s.clipboard, |ui| {
+                        number(ui, "Keep up to", &mut s.clipboard_max, 1..=CLIP_MAX_FREE, " items");
+                        switch_row(ui, "Remember after restart", &mut s.clipboard_keep);
+                    });
+                });
+                card(ui, "Popups", |ui| {
+                    switch_row(ui, "Volume", &mut s.hud_volume);
+                    switch_row(ui, "Brightness", &mut s.hud_brightness);
+                    switch_row(ui, "Caps Lock", &mut s.hud_caps);
+                    switch_row(ui, "Input language", &mut s.hud_language);
+                    switch_row(ui, "Battery", &mut s.popup_battery);
+                    switch_row(ui, "Wi-Fi", &mut s.popup_wifi);
+                    switch_row(ui, "Bluetooth headset", &mut s.popup_bluetooth);
+                    switch_row(ui, "Hide in full screen — games, videos and slides that fill the screen", &mut s.hide_fullscreen);
+                });
+                card(ui, "Notifications", |ui| {
+                    switch_row(ui, "Show notifications — new Windows notifications appear here (after restart)", &mut s.notifications);
+                    ui.add_enabled_ui(s.notifications, |ui| switch_row(ui, "Show the message text", &mut s.notification_preview));
+                    switch_row(ui, "Today page — recent notifications and your week", &mut s.today_page);
+                });
+                card(ui, "Music", |ui| {
+                    switch_row(ui, "Show lyrics — from LRCLIB, a community lyrics database (after restart)", &mut s.lyrics);
+                });
+                card(ui, "Pages", |ui| {
+                    // Reorder with the arrows, leave pages out with the switch; one always stays.
+                    let order = s.page_order.clone();
+                    let shown = order.iter().filter(|&&p| !s.pages_hidden.contains(&p) && (p != TODAY_PAGE || s.today_page)).count();
+                    for (i, &pg) in order.iter().enumerate() {
+                        row(ui, PAGES[pg], |ui| {
+                            let mut on = if pg == TODAY_PAGE { s.today_page } else { !s.pages_hidden.contains(&pg) };
+                            let was = on;
+                            if switch(ui, &mut on, PAGES[pg]) && !(was && shown == 1) {
+                                if pg == TODAY_PAGE {
+                                    s.today_page = on;
+                                } else if on {
+                                    s.pages_hidden.retain(|&p| p != pg);
+                                } else {
+                                    s.pages_hidden.push(pg);
+                                }
+                            }
+                            ui.add_space(8.0);
+                            if i + 1 < order.len() && move_button(ui, "↓", t("Move down")) {
+                                s.page_order.swap(i, i + 1);
+                            }
+                            if i > 0 && move_button(ui, "↑", t("Move up")) {
+                                s.page_order.swap(i, i - 1);
+                            }
+                        });
+                    }
+                });
+                card(ui, "Widgets", |ui| {
+                    combo(ui, "Left widget", &mut s.widget_left, &WIDGETS);
+                    combo(ui, "Right widget", &mut s.widget_right, &WIDGETS);
+                    let cities: Vec<&str> = WORLD.iter().map(|w| w.0).collect();
+                    combo(ui, "World clock, first city", &mut s.widget_city1, &cities);
+                    combo(ui, "World clock, second city", &mut s.widget_city2, &cities);
+                    combo(ui, "Countdown to", &mut s.widget_event, &EVENTS);
+                    let mut wm = s.week_monday as usize;
+                    if combo(ui, "Week starts on", &mut wm, &["Sunday", "Monday"]) {
+                        s.week_monday = wm == 1;
+                    }
+                });
+                ui.add_space(8.0);
             });
         });
         if self.s != before {
             if self.s.startup != before.startup {
                 set_startup(self.s.startup);
+            }
+            if self.s.language != before.language {
+                i18n::set(self.s.language);
+                setup_fonts(ui.ctx());
+                self.s.language = i18n::lang();
+            }
+            if self.s.app_icon != before.app_icon && self.shot.is_none() {
+                tray::set_icon(self.s.app_icon);
             }
             self.clips.truncate(self.s.clipboard_max);
             self.save_clips();
@@ -1801,17 +2008,73 @@ impl eframe::App for App {
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if tray::take() == tray::SETTINGS {
+        let pick = tray::take();
+        if pick == tray::OPEN {
             self.expanded = true;
-            self.settings_open = true;
+            self.settings_open = false;
             self.held = true;
         }
+        // The tray menu's switches change the same settings as Settings does.
+        if matches!(pick, tray::STARTUP | tray::MASCOT | tray::MINIMAL) {
+            match pick {
+                tray::STARTUP => {
+                    self.s.startup = !self.s.startup;
+                    set_startup(self.s.startup);
+                }
+                tray::MASCOT => self.s.mascot = !self.s.mascot,
+                _ => self.s.minimal = !self.s.minimal,
+            }
+            self.s.save();
+        }
+        if pick == tray::OCR {
+            self.expanded = false;
+            ocr::start(self.ocr.clone());
+        }
+        // A location found for "My location" is kept even if Settings was closed meanwhile.
+        let found = *self.locating.lock().unwrap();
+        if let Locating::Got(lat, lon) = found {
+            (self.s.prayer_lat, self.s.prayer_lon) = (lat, lon);
+            *self.locating.lock().unwrap() = Locating::Idle;
+            self.s.save();
+        }
+        let read = self.ocr.lock().unwrap().take();
+        match read {
+            Some(ocr::Outcome::Copied(n)) => self.alert = Some(Alert { title: t("Text copied").into(), body: tr("{} characters, ready to paste", &[&n]), kind: Kind::About, at: Instant::now() }),
+            Some(ocr::Outcome::NoText) => self.alert = Some(Alert { title: t("No text found").into(), body: t("Try a larger area").into(), kind: Kind::About, at: Instant::now() }),
+            Some(ocr::Outcome::ClipboardBusy) => self.alert = Some(Alert { title: t("Couldn't copy").into(), body: t("Another app is using the clipboard — try again").into(), kind: Kind::About, at: Instant::now() }),
+            Some(ocr::Outcome::NoEngine) => self.alert = Some(Alert { title: t("No text found").into(), body: t("Add an OCR language in Windows Settings › Language").into(), kind: Kind::About, at: Instant::now() }),
+            _ => {}
+        }
+        if pick == tray::ABOUT {
+            self.alert = Some(Alert { title: "My Notch".into(), body: tr("Version {}", &[&env!("CARGO_PKG_VERSION")]), kind: Kind::About, at: Instant::now() });
+        }
+        tray::set_checks(self.s.startup, self.s.mascot, self.s.minimal);
+        if pick == tray::ASK {
+            self.expanded = true;
+            self.held = true;
+            self.settings_open = false;
+            self.ask_open = true;
+            self.ask_focus = true;
+            // The hotkey lets this app take the keyboard, so typing goes straight into the box.
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        }
         // Turning the Today page off while on it moves back to the last page left.
-        self.page = self.page.min(self.page_count() - 1);
+        // A page turned off or hidden while on it hands over to the first one shown.
+        let order = self.order();
+        if !order.contains(&self.page) {
+            self.page = order[0];
+        }
         let was_hidden = self.hidden;
         self.tick();
         if self.hidden != was_hidden {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(!self.hidden));
+            // Not Visible(false): eframe stops calling update for a hidden window, so the notch could
+            // never come back, and its event loop spins a core. Drawing nothing and letting clicks
+            // through looks the same and keeps the once-a-second look in idle_wait going.
+            ctx.send_viewport_cmd(egui::ViewportCommand::MousePassthrough(self.hidden));
+        }
+        if self.hidden {
+            ctx.request_repaint_after(self.idle_wait());
+            return;
         }
 
         let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().filter_map(|f| f.path.clone()).collect());
@@ -1822,13 +2085,16 @@ impl eframe::App for App {
                 }
             }
             self.save_shelf();
-            self.page = SHELF_PAGE;
+            // Dropped files are kept either way; the Shelf page comes up only when it is shown.
+            if self.order().contains(&SHELF_PAGE) {
+                self.page = SHELF_PAGE;
+            }
             self.shelf_view = ShelfView::Files;
         }
 
         let files_over = ctx.input(|i| !i.raw.hovered_files.is_empty());
         let inside = files_over || ctx.input(|i| i.pointer.hover_pos().is_some());
-        if files_over {
+        if files_over && self.order().contains(&SHELF_PAGE) {
             self.page = SHELF_PAGE;
             self.settings_open = false;
         }
@@ -1844,6 +2110,7 @@ impl eframe::App for App {
         } else if self.expanded && !typing && !self.held && self.last_inside.elapsed().as_secs_f32() > 0.5 {
             self.expanded = false;
             self.settings_open = false;
+            self.ask_open = false;
         }
         let moving = self.animate(ctx);
 
@@ -1860,7 +2127,19 @@ impl eframe::App for App {
                 self.expanded = true;
                 self.settings_open = !self.settings_open;
             }
-            if !self.expanded && resp.clicked() {
+            let notice_app = self.alert.as_ref().and_then(|a| match &a.kind {
+                Kind::Notice(_, id) if !id.is_empty() && !id.chars().any(|c| c == '"' || c.is_control()) => Some(id.clone()),
+                _ => None,
+            });
+            if !self.expanded && resp.clicked() && notice_app.is_some() {
+                // A notification opens the app that sent it, as a click on the toast would.
+                let opened = notice_app.is_some_and(|id| std::process::Command::new("explorer.exe").arg(format!("shell:AppsFolder\\{id}")).spawn().is_ok());
+                if opened {
+                    self.alert = None;
+                } else {
+                    self.expanded = true;
+                }
+            } else if !self.expanded && resp.clicked() {
                 if self.alert.as_ref().is_some_and(|a| matches!(a.kind, Kind::Info | Kind::Battery(..) | Kind::Prayer(..))) {
                     self.alert = None;
                 }
@@ -1877,16 +2156,23 @@ impl eframe::App for App {
                 ui.multiply_opacity(alpha);
                 ui.set_clip_rect(body);
                 if self.expanded {
+                    if self.ask_open && !self.settings_open {
+                        self.page_ask(ui, r);
+                        return;
+                    }
                     if self.settings_open {
-                        ui.painter().text(pos2(r.left() + 22.0, r.top() + 24.0), Align2::LEFT_CENTER, "Settings", bold(17.0), WHITE);
-                        if pill_button(ui, Rect::from_min_size(pos2(r.right() - 76.0, r.top() + 12.0), vec2(56.0, 24.0)), "Close", BTN, "sclose") {
+                        ui.painter().text(pos2(r.left() + 22.0, r.top() + 24.0), Align2::LEFT_CENTER, t("Settings"), bold(17.0), WHITE);
+                        if pill_button(ui, Rect::from_min_size(pos2(r.right() - 76.0, r.top() + 12.0), vec2(56.0, 24.0)), t("Close"), BTN, "sclose") {
                             self.settings_open = false;
                         }
                         self.page_settings(ui, r);
                         return;
                     }
                     // Pages slide sideways and fade as the dots move (page motion).
-                    let shown = [self.page_anim.floor() as usize, self.page_anim.ceil() as usize];
+                    // page_anim moves through positions in the user's order; each position shows its page.
+                    let order = self.order();
+                    let last = order.len() - 1;
+                    let shown = [(self.page_anim.floor() as usize).min(last), (self.page_anim.ceil() as usize).min(last)];
                     let title = self.page_title(self.page);
                     let lyrics_view = self.page == 0 && self.lyrics_open;
                     if !lyrics_view {
@@ -1902,12 +2188,13 @@ impl eframe::App for App {
                             continue;
                         }
                         let pr = r.translate(vec2(off * 120.0, 0.0));
-                        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(r).id_salt(("page", i)), |ui| {
+                        let page = order[i];
+                        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(r).id_salt(("page", page)), |ui| {
                             ui.multiply_opacity(vis);
                             if (off).abs() > 0.5 {
                                 ui.disable();
                             }
-                            self.draw_page(ui, i, pr);
+                            self.draw_page(ui, page, pr);
                         });
                     }
                     if !lyrics_view {
@@ -1960,7 +2247,8 @@ impl App {
         let mascot_shown = !self.expanded && self.alert.is_none() && self.s.mascot && self.left >= self.mode_len(self.mode);
         if mascot_shown {
             let b = ms.rem_euclid(BLINK_EVERY_MS);
-            wait = wait.min(if b < BLINK_MS { BLINK_MS - b } else { BLINK_EVERY_MS - b });
+            // During a blink, draw every frame so the lids move; otherwise wake for the next one.
+            wait = wait.min(if b < BLINK_MS { 16 } else { BLINK_EVERY_MS - b });
         }
         let song_shown = self.expanded && self.page == 0 && !self.settings_open;
         if song_shown && self.media.now.lock().is_ok_and(|n| n.playing) {
@@ -2165,7 +2453,10 @@ fn pill_button(ui: &mut egui::Ui, r: Rect, text: &str, fill: Color32, id: &str) 
     let p = ui.painter();
     let f = if resp.hovered() { lerp_color(fill, WHITE, 0.12) } else { fill };
     p.rect_filled(r, r.height() / 2.0, f);
-    p.text(r.center(), Align2::CENTER_CENTER, text, bold(14.0), WHITE);
+    // Translations can be longer than the English the button was sized for: shrink to fit.
+    let wide = p.layout_no_wrap(text.to_string(), bold(14.0), WHITE).size().x;
+    let size = if wide > 0.0 { (14.0 * (r.width() - 12.0) / wide).clamp(9.0, 14.0) } else { 14.0 };
+    p.text(r.center(), Align2::CENTER_CENTER, text, bold(size), WHITE);
     resp.clicked()
 }
 
@@ -2262,27 +2553,132 @@ fn file_icon(p: &egui::Painter, r: Rect, path: &std::path::Path) {
     }
 }
 
-fn section(ui: &mut egui::Ui, title: &str) {
-    ui.add_space(6.0);
-    ui.label(egui::RichText::new(title).font(bold(14.0)).color(BLUE));
+/// Dark controls for Settings: combo boxes, number fields and their drop-down lists.
+fn settings_style(ui: &mut egui::Ui) {
+    let style = |v: &mut egui::Visuals| {
+        for (w, fill) in [(&mut v.widgets.inactive, BTN), (&mut v.widgets.hovered, Color32::from_gray(48)), (&mut v.widgets.active, Color32::from_gray(56)), (&mut v.widgets.open, Color32::from_gray(48))] {
+            w.bg_fill = fill;
+            w.weak_bg_fill = fill;
+            w.bg_stroke = Stroke::NONE;
+            w.corner_radius = 8.into();
+            w.fg_stroke.color = WHITE;
+            w.expansion = 0.0;
+        }
+        v.selection.bg_fill = BLUE.gamma_multiply(0.45);
+        v.window_fill = Color32::from_gray(28);
+        v.window_stroke = Stroke::new(1.0_f32, Color32::from_gray(48));
+        v.window_corner_radius = 10.into();
+        v.window_shadow = egui::Shadow::NONE;
+        v.popup_shadow = egui::Shadow::NONE;
+    };
+    style(&mut ui.style_mut().visuals);
+    // Drop-down lists are drawn with the context's style, not this Ui's.
+    ui.ctx().style_mut(|s| style(&mut s.visuals));
+    ui.spacing_mut().button_padding = vec2(10.0, 4.0);
+    ui.spacing_mut().item_spacing.y = 0.0;
+    ui.spacing_mut().scroll.bar_width = 4.0;
+}
+
+/// A titled group of rows on a dark rounded card.
+fn card(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
+    ui.add_space(10.0);
+    ui.label(egui::RichText::new(t(title).to_uppercase()).font(bold(11.0)).color(DIM));
+    ui.add_space(4.0);
+    egui::Frame::new().fill(CARD).corner_radius(12).inner_margin(egui::Margin::symmetric(12, 2)).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        add(ui);
+    });
+}
+
+/// "Name — hint": the name, with the hint dimmer underneath.
+fn row_text(ui: &mut egui::Ui, label: &str) {
+    let label = t(label);
+    let Some((name, hint)) = label.split_once(" — ") else {
+        ui.label(egui::RichText::new(label).font(reg(14.0)).color(WHITE));
+        return;
+    };
+    let hint = Some(hint);
+    ui.vertical(|ui| {
+        ui.label(egui::RichText::new(name).font(reg(14.0)).color(WHITE));
+        if let Some(h) = hint {
+            let mut c = h.chars();
+            let h: String = c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default();
+            ui.label(egui::RichText::new(h).font(reg(12.0)).color(DIM));
+        }
+    });
+}
+
+fn row_label(ui: &mut egui::Ui, label: &str, h: f32) {
+    ui.allocate_ui_with_layout(vec2(ui.available_width(), h), egui::Layout::left_to_right(egui::Align::Center), |ui| row_text(ui, label));
+}
+
+/// One row: text on the left, the control on the right, centred in a fixed height.
+fn row(ui: &mut egui::Ui, label: &str, control: impl FnOnce(&mut egui::Ui)) {
+    let h = if label.contains(" — ") { 46.0 } else { 34.0 };
+    ui.allocate_ui_with_layout(vec2(ui.available_width(), h), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        control(ui);
+        ui.add_space(10.0);
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| row_text(ui, label));
+    });
+}
+
+/// A switch like the Water page's, reported to screen readers as a checkbox with its label.
+fn switch_row(ui: &mut egui::Ui, label: &str, v: &mut bool) {
+    row(ui, label, |ui| {
+        switch(ui, v, label);
+    });
+}
+
+/// The switch on its own; true when it was flipped.
+fn switch(ui: &mut egui::Ui, v: &mut bool, label: &str) -> bool {
+    let (r, resp) = ui.allocate_exact_size(vec2(40.0, 22.0), Sense::click());
+    if resp.clicked() {
+        *v = !*v;
+    }
+    let name = t(label).split(" — ").next().unwrap_or(label);
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, ui.is_enabled(), *v, name));
+    let t = ui.ctx().animate_bool(resp.id, *v);
+    let p = ui.painter();
+    p.rect_filled(r, 11.0, lerp_color(Color32::from_gray(60), BLUE, t));
+    p.circle_filled(pos2(r.left() + 11.0 + t * 18.0, r.center().y), 8.0, WHITE);
+    resp.clicked()
+}
+
+/// A small round button that moves a row; reported to screen readers by what it does.
+fn move_button(ui: &mut egui::Ui, text: &str, what: &str) -> bool {
+    let (r, resp) = ui.allocate_exact_size(vec2(24.0, 24.0), Sense::click());
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), what));
+    let p = ui.painter();
+    p.circle_filled(r.center(), 11.0, if resp.hovered() { Color32::from_gray(60) } else { BTN });
+    p.text(r.center(), Align2::CENTER_CENTER, text, bold(13.0), WHITE);
+    resp.clicked()
+}
+
+fn number<T: egui::emath::Numeric>(ui: &mut egui::Ui, label: &str, v: &mut T, range: std::ops::RangeInclusive<T>, suffix: &str) {
+    row(ui, label, |ui| {
+        ui.add(egui::DragValue::new(v).range(range).suffix(t(suffix)));
+    });
 }
 
 fn combo(ui: &mut egui::Ui, label: &str, v: &mut usize, items: &[&str]) -> bool {
     let old = *v;
-    ui.horizontal(|ui| {
-        ui.label(label);
-        egui::ComboBox::from_id_salt(label).selected_text(items.get(*v).copied().unwrap_or("")).show_ui(ui, |ui| {
-            for (i, it) in items.iter().enumerate() {
-                ui.selectable_value(v, i, *it);
-            }
-        });
+    row(ui, label, |ui| {
+        egui::ComboBox::from_id_salt(label)
+            .width(170.0)
+            .wrap_mode(egui::TextWrapMode::Truncate)
+            .selected_text(t(items.get(*v).copied().unwrap_or("")))
+            .show_ui(ui, |ui| {
+                for (i, it) in items.iter().enumerate() {
+                    ui.selectable_value(v, i, t(it));
+                }
+            });
     });
     *v != old
 }
 
 fn clip_text(text: &str, g: &egui::Galley, max_rows: usize, clipped: bool, just: bool) -> String {
     if just {
-        return "Copied".into();
+        return t("Copied").into();
     }
     if !clipped {
         return text.to_string();
@@ -2314,18 +2710,18 @@ fn human_size(b: u64) -> String {
 
 fn ago(secs: i64) -> String {
     match secs {
-        s if s < 60 => "Just now".into(),
-        s if s < 3600 => format!("{} min ago", s / 60),
-        s if s < 86400 => format!("{} h ago", s / 3600),
-        s => format!("{} d ago", s / 86400),
+        s if s < 60 => t("Just now").into(),
+        s if s < 3600 => tr("{} min ago", &[&(s / 60)]),
+        s if s < 86400 => tr("{} h ago", &[&(s / 3600)]),
+        s => tr("{} d ago", &[&(s / 86400)]),
     }
 }
 
 fn dur_text(min: u32) -> String {
     match (min / 60, min % 60) {
-        (0, m) => format!("{m} min"),
+        (0, m) => tr("{} min", &[&m]),
         (h, 0) => format!("{h} h"),
-        (h, m) => format!("{h} h {m} min"),
+        (h, m) => tr("{} h {} min", &[&h, &m]),
     }
 }
 
@@ -2368,15 +2764,20 @@ fn last_sunday(y: i32, m: u32) -> NaiveDate {
 fn world_time(idx: usize) -> NaiveDateTime {
     let (_, std, rule) = WORLD[idx.min(WORLD.len() - 1)];
     let utc = Utc::now().naive_utc();
+    utc + Duration::minutes(((std + if summer(rule, std, utc) { 1.0 } else { 0.0 }) * 60.0) as i64)
+}
+
+/// Whether summer time applies at that UTC moment, for a place `std` hours from UTC under `rule`.
+/// Shared with prayer times for cities abroad.
+fn summer(rule: Dst, std: f64, utc: NaiveDateTime) -> bool {
     let at = |d: NaiveDate, local_hour: f64| d.and_hms_opt(0, 0, 0).unwrap() + Duration::minutes(((local_hour - std) * 60.0) as i64);
     let y = utc.year();
-    let dst = match rule {
+    match rule {
         Dst::No => false,
         Dst::Eu => utc >= last_sunday(y, 3).and_hms_opt(1, 0, 0).unwrap() && utc < last_sunday(y, 10).and_hms_opt(1, 0, 0).unwrap(),
         Dst::Us => utc >= at(nth_sunday(y, 3, 2), 2.0) && utc < at(nth_sunday(y, 11, 1), 1.0),
         Dst::Au => utc >= at(nth_sunday(y, 10, 1), 2.0) || utc < at(nth_sunday(y, 4, 1), 2.0),
-    };
-    utc + Duration::minutes(((std + if dst { 1.0 } else { 0.0 }) * 60.0) as i64)
+    }
 }
 
 fn next_event(today: NaiveDate, ev: usize) -> Option<NaiveDate> {
@@ -2469,7 +2870,7 @@ fn demo_recent() -> Vec<(i64, media::Notice)> {
     [("Messenger", "Lan", "See you at 7"), ("Outlook", "Weekly report", "Attached is this week's report"), ("Zalo", "Minh", "Ok")]
         .iter()
         .enumerate()
-        .map(|(k, (a, t, b))| (now - k as i64 * 400, (a.to_string(), t.to_string(), b.to_string())))
+        .map(|(k, (a, t, b))| (now - k as i64 * 400, (a.to_string(), t.to_string(), b.to_string(), String::new())))
         .collect()
 }
 
@@ -2479,7 +2880,7 @@ fn demo_alert() -> Option<Alert> {
     let which = args.iter().position(|a| a == "--popup").and_then(|i| args.get(i + 1))?;
     let (title, body, kind) = match which.as_str() {
         "bluetooth" => ("AirBuds Pro", "Connected · 70%", Kind::Bluetooth(Some(70))),
-        "notice" => ("Nusa", "Hello, Nusa 1.2!", Kind::Notice("Messages".into())),
+        "notice" => ("Nusa", "Hello, Nusa 1.2!", Kind::Notice("Messages".into(), String::new())),
         "brightness" => ("Brightness", "", Kind::Hud(HudKind::Brightness, 0.6)),
         _ => return None,
     };
@@ -2534,28 +2935,80 @@ fn speaker_icon(p: &egui::Painter, c: Pos2, col: Color32, muted: bool) {
 /// The mascot (reference picture 15): two white eyes on the black pill with a cyan-to-purple glow
 /// along the bottom; it blinks now and then (blink timing estimated).
 fn mascot(p: &egui::Painter, r: Rect) {
-    // Soft glow: black at the top fading into cyan (left) to purple (right) at the bottom edge.
-    let glow = Rect::from_min_max(pos2(r.left() + 6.0, r.center().y), pos2(r.right() - 6.0, r.bottom() - 2.0));
+    // Soft glow filling the lower half and following the pill's rounded bottom corners (same radius
+    // as notch_shape): cyan on the left, bright blue in the middle, purple fading out on the right.
+    // A mesh has no anti-aliasing, so the glow stops short of the shape's edge and fades out over
+    // the last few pixels; the black body's smooth edge stays outermost.
+    const FEATHER: f32 = 1.5;
+    let rad = (r.height() * 0.2).clamp(12.0, 32.0);
+    // Bottom edge at x of the shape inset by `inset`: straight, rising along the corner arcs.
+    let edge = |x: f32, inset: f32| {
+        let rr = rad - inset;
+        let into = (rr - (x - r.left() - inset)).max(rr - (r.right() - inset - x)).clamp(0.0, rr);
+        r.bottom() - inset - rr + (rr * rr - into * into).sqrt()
+    };
+    let top = r.top() + r.height() * 0.3;
+    let mid = r.top() + r.height() * 0.68;
+    // Glow strength depends on height alone (0 at `top`, 0.3 at `mid`, full at the very bottom);
+    // the corners just cut it off. Peaking at each column's own edge drew a bright rim round them.
+    let strength = |y: f32| {
+        if y < mid {
+            0.3 * ((y - top) / (mid - top)).max(0.0)
+        } else {
+            0.3 + 0.7 * ((y - mid) / (r.bottom() - mid)).min(1.0)
+        }
+    };
+    let (x0, x1) = (r.left() + 0.5, r.right() - 0.5);
     let mut mesh = egui::epaint::Mesh::default();
-    let segs = 12;
+    let segs = 96;
     for k in 0..=segs {
         let u = k as f32 / segs as f32;
-        let x = glow.left() + glow.width() * u;
-        mesh.colored_vertex(pos2(x, glow.top()), Color32::TRANSPARENT);
-        mesh.colored_vertex(pos2(x, glow.bottom()), lerp_color(Color32::from_rgb(34, 211, 238), Color32::from_rgb(124, 58, 237), u));
+        let x = x0 + (x1 - x0) * u;
+        let col = if u < 0.5 {
+            lerp_color(Color32::from_rgb(34, 211, 238), Color32::from_rgb(59, 110, 255), u * 2.0)
+        } else {
+            lerp_color(Color32::from_rgb(59, 110, 255), Color32::from_rgb(110, 50, 200), (u - 0.5) * 2.0)
+        };
+        // The right end fades towards the dark corner, as in the reference; both ends fade out
+        // over FEATHER so the sides are as soft as the bottom.
+        let side = ((x - x0).min(x1 - x) / FEATHER).clamp(0.0, 1.0);
+        let col = col.gamma_multiply((1.0 - 0.45 * ((u - 0.6) / 0.4).clamp(0.0, 1.0)) * side);
+        let (inner, outer) = (edge(x, FEATHER + 0.5), edge(x, 0.5));
+        let m = mid.min(inner);
+        mesh.colored_vertex(pos2(x, top), Color32::TRANSPARENT);
+        mesh.colored_vertex(pos2(x, m), col.gamma_multiply(strength(m)));
+        mesh.colored_vertex(pos2(x, inner), col.gamma_multiply(strength(inner)));
+        mesh.colored_vertex(pos2(x, outer), Color32::TRANSPARENT);
         if k > 0 {
-            let i = (k * 2) as u32;
-            mesh.add_triangle(i - 2, i - 1, i);
-            mesh.add_triangle(i - 1, i, i + 1);
+            let i = (k * 4) as u32;
+            for row in 0..3 {
+                let (a, b) = (i - 4 + row, i + row);
+                mesh.add_triangle(a, a + 1, b);
+                mesh.add_triangle(a + 1, b, b + 1);
+            }
         }
     }
     p.add(Shape::mesh(mesh));
-    let ms = Utc::now().timestamp_millis().rem_euclid(BLINK_EVERY_MS);
-    let open = if ms < BLINK_MS { 0.15 } else { 1.0 };
+    let open = blink_open(Utc::now().timestamp_millis());
     for dx in [-16.0, 16.0] {
         let c = pos2(r.center().x + dx, r.center().y - 1.0);
-        p.add(Shape::ellipse_filled(c, vec2(5.0, 8.0 * open), WHITE));
+        // Closed eyes flatten into a slightly wider line (reference picture 15, second frame).
+        let size = vec2(5.0 + 2.0 * (1.0 - open), (8.0 * open).max(1.2));
+        // Soft blue halo, fading outwards.
+        for (grow, alpha) in [(6.0, 8), (3.5, 14), (1.8, 26)] {
+            p.add(Shape::ellipse_filled(c, size + vec2(grow, grow), Color32::from_rgba_unmultiplied(120, 170, 255, alpha)));
+        }
+        p.add(Shape::ellipse_filled(c, size, WHITE));
     }
+}
+
+/// How open the mascot's eyes are (1 = open) at this time: a smooth close-and-open over BLINK_MS.
+fn blink_open(ms: i64) -> f32 {
+    let b = ms.rem_euclid(BLINK_EVERY_MS);
+    if b >= BLINK_MS {
+        return 1.0;
+    }
+    1.0 - (std::f32::consts::PI * b as f32 / BLINK_MS as f32).sin() * 0.9
 }
 
 fn battery() -> Option<(u8, bool)> {
@@ -2589,7 +3042,17 @@ fn set_startup(on: bool) {
 mod tests {
     use super::*;
     #[test]
+    fn blink_closes_smoothly() {
+        assert_eq!(blink_open(BLINK_MS), 1.0);
+        assert_eq!(blink_open(BLINK_EVERY_MS - 1), 1.0);
+        assert!((blink_open(BLINK_MS / 2) - 0.1).abs() < 0.01); // most closed halfway
+        assert!(blink_open(BLINK_MS / 4) > blink_open(BLINK_MS / 2)); // closing, not a jump
+        assert!(blink_open(BLINK_EVERY_MS + BLINK_MS / 2) < 0.2); // repeats every period
+    }
+
+    #[test]
     fn time_helpers() {
+        let _english = i18n::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         assert_eq!(parse_hm("9:05"), Some(545));
         assert_eq!(parse_hm("24:00"), None);
         assert_eq!(hm(1440), "24:00");
