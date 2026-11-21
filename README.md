@@ -11,9 +11,19 @@ hiện trạng thái và mở ra thành bảng công cụ nhỏ.*
 ## Tính năng
 
 **Notch**
-- Notch nghỉ có mascot: đôi mắt chớp mắt, dải sáng xanh–tím bo theo góc notch.
-- Rê chuột (hoặc click) để mở; click phải để vào Settings; ẩn khi có game, video, slide toàn màn hình.
-- Icon khay hệ thống: Start with Windows, Mascot, Minimal notch, About, Exit.
+- Notch nghỉ có mascot: 2 mắt trắng có quầng sáng, khoảng 4 giây chớp một lần; dải sáng xanh ngọc,
+  xanh dương, tím ở nửa dưới, bo theo góc notch.
+- Minimal notch: khi không có việc gì (không mascot, không Pomodoro, không phát nhạc), notch thu thành
+  một vạch mỏng; rê chuột vào thì bung ra.
+- Khi đang Pomodoro: notch nghỉ hiện đồng hồ đếm ngược màu tím, thay chỗ mascot.
+- Mở notch: rê chuột vào, hoặc click (Settings › Open the notch on). Chuột rời đi thì notch tự thu lại,
+  trừ khi đang gõ chữ.
+- Chuyển trang: mũi tên hai bên hoặc chấm trang; trang trượt ngang và mờ dần.
+- Settings: click phải vào notch để mở, click phải lần nữa để đóng.
+- Menu khay hệ thống: Start with Windows, Mascot, Minimal notch (có dấu tick), About, Exit. Click trái
+  để mở notch.
+- Ẩn khi toàn màn hình (game, video, slide), thoát ra thì notch hiện lại; tắt được ở Settings › Popups.
+- Chỉ chạy một bản: mở exe lần nữa thì notch đang chạy sẽ mở ra, không tạo notch thứ hai.
 
 **Các trang** (sắp xếp lại hoặc ẩn trong Settings › Pages)
 - **Music**: bài đang phát từ mọi trình phát (Spotify, trình duyệt…), play/pause, chuyển bài, tua;
