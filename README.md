@@ -35,7 +35,12 @@ hiện trạng thái và mở ra thành bảng công cụ nhỏ.*
   thanh tiến trình và sóng nhạc lấy màu ảnh bìa. **Lời bài hát chạy theo nhạc** từ LRCLIB (bật/tắt
   bằng nút lời trên trang, tắt hẳn ở Settings › Music), click một dòng để nhảy tới. Notch thu nhỏ khi
   đang phát hiện ảnh bìa nhỏ, giờ và sóng nhạc.
-- **Pomodoro**: đồng hồ tập trung, đếm vòng, nghỉ ngắn/dài, pop-up khi hết giờ.
+- **Pomodoro**: Start / Pause / Resume (hoặc phím Space), 4 vòng tập trung rồi nghỉ dài, nghỉ ngắn
+  giữa các vòng. Nút ↺ chạy lại phần đang chạy (bấm khi chưa chạy: bắt đầu lại từ vòng 1), nút ▶| bỏ
+  qua sang phần kế tiếp. Hết giờ có pop-up với nút Break / Focus và chuông (nếu bật). Trang hiện giờ
+  sẽ xong, dải 4 vòng và số phút đã tập trung hôm nay. Settings › Pomodoro: thời lượng từng phần, tự
+  chạy tiếp, tập trung yên tĩnh (thông báo chờ đến khi hết giờ tập trung). Số vòng về 0 khi sang ngày
+  mới; máy ngủ thì đồng hồ tạm dừng.
 - **Water**: nhắc uống nước theo khung giờ, dung tích bình, mục tiêu và biểu đồ theo giờ.
 - **Shelf**: kéo file vào notch, kéo ra thư mục hoặc ô chat; lịch sử clipboard.
 - **To-do**: việc có giờ, nhắc khi bắt đầu và khi hết giờ, nút "Later".

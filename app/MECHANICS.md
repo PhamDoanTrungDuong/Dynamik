@@ -304,3 +304,16 @@ of the larger "working set" is the graphics driver's shared DLLs.
 - Several players: the icon (ringed) switches to the next in Windows' list. The pick holds until
   that player is gone, or is paused while Windows' own pick plays something else.
 - `--page 0 --demo` fills a screenshot with a made-up song and cover (no one's real music).
+
+## Pomodoro, reworked
+- `next_part(skipped)` moves on: a break after focus (long every 4th round), focus after a break.
+  Run out: stops and the pop-up (Kind::Info) waits for its button. With `auto_next`: goes on at
+  once and says so in a pop-up that closes itself. Skipped (▶|): goes on as the skipped part did,
+  running or not, with no pop-up; a skipped focus still counts as a round.
+- ↺ starts the part over; on a part not started yet (and past round 1 or on a break) it starts the
+  4 rounds over. A new day does the same, unless a part is under way (`rounds_day`).
+- `focus_quiet`: while a focus part runs, new notifications wait (the newest kept, with a count);
+  the newest shows with "+N" once focus ends and nothing else is up.
+- Space starts / pauses on the Pomodoro page when nothing is being typed.
+- A gap of more than 5 s between looks while running means the PC slept: Pomodoro pauses, the gap
+  counts for nothing, and a pop-up says so.
