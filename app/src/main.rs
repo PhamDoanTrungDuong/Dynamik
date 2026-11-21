@@ -1466,6 +1466,7 @@ impl App {
         p.text(pos2(x + tw + 18.0, r.top() + 112.0), Align2::LEFT_CENTER, t("until done"), bold(15.0), PURPLE);
         let frac = 1.0 - (self.left / self.mode_len(self.mode)).clamp(0.0, 1.0) as f32;
         gradient_bar(&p, Rect::from_min_size(pos2(x, r.top() + 135.0), vec2(166.0, 5.0)), frac, PURPLE, Color32::from_rgb(99, 102, 241));
+        p.text(pos2(x, r.top() + 154.0), Align2::LEFT_CENTER, tr("Focused today: {}", &[&dur_text(self.focus_today())]), reg(12.0), DIM);
         p.line_segment([pos2(r.left() + 250.0, r.top() + 46.0), pos2(r.left() + 250.0, r.top() + 158.0)], Stroke::new(1.0_f32, Color32::from_gray(40)));
 
         let rx = r.left() + 268.0;
