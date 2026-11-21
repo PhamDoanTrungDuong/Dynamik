@@ -9,8 +9,13 @@ CÀI ĐẶT
 
 DÙNG
 - Rê chuột lên notch ở giữa mép trên để mở; bấm trái icon ở khay hệ thống cũng mở.
-- Bấm phải icon ở khay: Settings / Quit.
-- Tự chạy cùng Windows: Settings → bật "Start with Windows".
+- Bấm phải vào notch để mở Settings (bấm phải lần nữa để đóng).
+- Bấm phải icon ở khay: Start with Windows, Mascot, Minimal notch, About, Exit.
+- Chuyển trang: mũi tên, chấm trang, lăn chuột hoặc phím ← →.
+- Phím tắt: Ctrl+Alt+Space hỏi Nusa (tính toán, đổi tiền, hỏi Gemini, Tab để dịch);
+  Ctrl+Alt+T lấy chữ trên màn hình.
+- Hỏi Gemini và Google Lịch cần dán khóa / địa chỉ iCal của bạn trong Settings
+  (được mã hoá, chỉ lưu trên máy này).
 
 GỠ CÀI ĐẶT
 - Chạy %LOCALAPPDATA%\Programs\MyNotch\uninstall.cmd.
