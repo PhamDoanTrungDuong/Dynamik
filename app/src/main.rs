@@ -497,6 +497,35 @@ impl App {
         self.save_water();
     }
 
+    /// Moves Pomodoro on to its next part: a break after focus (the long one every 4th round),
+    /// focus after a break. Run out, it stops and the pop-up waits for its button; skipped, the
+    /// next part goes on as the skipped one did (running or not), with no pop-up.
+    fn next_part(&mut self, skipped: bool) {
+        let was_running = self.running;
+        self.running = false;
+        let (title, body) = if self.mode == Mode::Focus {
+            self.rounds += 1;
+            // Texts and order from 0x14000143f: rounds 1-3 "Focus done", the 4th "Round complete".
+            if self.rounds % LONG_BREAK_EVERY == 0 {
+                self.mode = Mode::Long;
+                (t("Round complete"), tr("Time for a {} min break", &[&self.s.long_break]))
+            } else {
+                self.mode = Mode::Short;
+                (t("Focus done"), tr("Time for a {} min break", &[&self.s.short_break]))
+            }
+        } else {
+            self.mode = Mode::Focus;
+            (t("Break over"), tr("Back to focus, {} min", &[&self.s.focus]))
+        };
+        self.left = self.mode_len(self.mode);
+        if skipped {
+            self.running = was_running;
+            self.last_tick = Instant::now();
+        } else {
+            self.notify(title, &body, Kind::Info);
+        }
+    }
+
     /// Everything that runs on the clock: timer, reminders, clipboard, battery.
     fn tick(&mut self) {
         self.now = Local::now().naive_local();
@@ -516,22 +545,7 @@ impl App {
                 }
             }
             if self.left <= 0.0 {
-                self.running = false;
-                if self.mode == Mode::Focus {
-                    self.rounds += 1;
-                    // Texts and order from 0x14000143f: rounds 1-3 "Focus done", the 4th "Round complete".
-                    if self.rounds % LONG_BREAK_EVERY == 0 {
-                        self.mode = Mode::Long;
-                        self.notify(t("Round complete"), &tr("Time for a {} min break", &[&self.s.long_break]), Kind::Info);
-                    } else {
-                        self.mode = Mode::Short;
-                        self.notify(t("Focus done"), &tr("Time for a {} min break", &[&self.s.short_break]), Kind::Info);
-                    }
-                } else {
-                    self.mode = Mode::Focus;
-                    self.notify(t("Break over"), &tr("Back to focus, {} min", &[&self.s.focus]), Kind::Info);
-                }
-                self.left = self.mode_len(self.mode);
+                self.next_part(false);
             }
         }
 
@@ -1430,13 +1444,16 @@ impl App {
         p.text(pos2(rx, r.top() + 52.0), Align2::LEFT_CENTER, t("This round"), reg(13.0), DIM);
         let full = self.left >= self.mode_len(self.mode);
         let text = if self.running { t("Pause") } else if full { t("Start") } else { t("Resume") };
-        if pill_button(ui, Rect::from_min_size(pos2(r.left() + 380.0, r.top() + 40.0), vec2(78.0, 26.0)), text, BTN, "pp") {
+        if pill_button(ui, Rect::from_min_size(pos2(r.left() + 354.0, r.top() + 40.0), vec2(78.0, 26.0)), text, BTN, "pp") {
             self.running = !self.running;
             self.last_tick = Instant::now();
         }
-        if icon_button(ui, pos2(r.left() + 476.0, r.top() + 53.0), 11.0, "reset") {
+        if icon_button(ui, pos2(r.left() + 450.0, r.top() + 53.0), 11.0, "reset", t("Start this part over")) {
             self.running = false;
             self.left = self.mode_len(self.mode);
+        }
+        if icon_button(ui, pos2(r.left() + 478.0, r.top() + 53.0), 11.0, "skip", t("Skip to the next part")) {
+            self.next_part(true);
         }
         // Round track: 4 focus rounds then the long break.
         let y = r.top() + 96.0;
@@ -2871,19 +2888,27 @@ fn circle_button(ui: &mut egui::Ui, c: Pos2, rad: f32, fill: Color32, dir: &str)
     resp.clicked()
 }
 
-fn icon_button(ui: &mut egui::Ui, c: Pos2, rad: f32, id: &str) -> bool {
+/// A small round button with a "reset" arrow or a "skip" (▶|) mark; `name` is its tooltip and
+/// what screen readers say.
+fn icon_button(ui: &mut egui::Ui, c: Pos2, rad: f32, kind: &str, name: &str) -> bool {
     let rect = Rect::from_center_size(c, vec2(rad * 2.0, rad * 2.0));
-    let resp = ui.interact(rect, ui.id().with(id), Sense::click());
+    let resp = ui.interact(rect, ui.id().with(kind), Sense::click()).on_hover_text(name);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name));
     let p = ui.painter();
     p.circle_filled(c, rad, if resp.hovered() { Color32::from_gray(60) } else { BTN });
-    // A small circular "reset" arrow.
-    let pts: Vec<Pos2> = (0..=14).map(|k| {
-        let a = -PI * 0.35 + (k as f32 / 14.0) * PI * 1.6;
-        c + 5.0 * vec2(a.cos(), a.sin())
-    }).collect();
-    let end = pts[0];
-    p.add(Shape::line(pts, Stroke::new(1.4_f32, WHITE)));
-    p.line_segment([end, end + vec2(3.0, -1.0)], Stroke::new(1.4_f32, WHITE));
+    if kind == "skip" {
+        p.add(Shape::convex_polygon(vec![c + vec2(-4.0, -4.5), c + vec2(2.0, 0.0), c + vec2(-4.0, 4.5)], WHITE, Stroke::NONE));
+        p.rect_filled(Rect::from_center_size(c + vec2(3.6, 0.0), vec2(1.8, 9.0)), 0.5, WHITE);
+    } else {
+        // A small circular "reset" arrow.
+        let pts: Vec<Pos2> = (0..=14).map(|k| {
+            let a = -PI * 0.35 + (k as f32 / 14.0) * PI * 1.6;
+            c + 5.0 * vec2(a.cos(), a.sin())
+        }).collect();
+        let end = pts[0];
+        p.add(Shape::line(pts, Stroke::new(1.4_f32, WHITE)));
+        p.line_segment([end, end + vec2(3.0, -1.0)], Stroke::new(1.4_f32, WHITE));
+    }
     resp.clicked()
 }
 
