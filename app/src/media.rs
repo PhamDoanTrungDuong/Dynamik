@@ -22,6 +22,8 @@ pub struct Now {
     pub read_at: Option<Instant>,
     pub lyrics: Vec<(f64, String)>, // (seconds, line), empty when none were found
     pub lyrics_state: LyricsState,
+    pub art: Option<Logo>, // the cover, when the player gives one
+    pub art_key: String,   // which song `art` belongs to
 }
 
 #[derive(Clone, Copy, Default, PartialEq)]
@@ -44,6 +46,8 @@ impl Now {
 }
 
 pub enum Cmd { Toggle, Next, Prev, Pause, Seek(f64) }
+
+const ART_TRIES: u32 = 4; // more reads of a song's cover while the player hasn't sent it yet
 
 /// What wakes the media thread: a button press, or Windows saying the session or song changed.
 enum Msg { Cmd(Cmd), Changed }
@@ -78,6 +82,7 @@ impl Media {
             }));
             let mut watched: Option<(String, windows::Media::Control::GlobalSystemMediaTransportControlsSession, [windows::Foundation::EventRegistrationToken; 3])> = None;
             let mut last_track = String::new();
+            let mut art_tries = 0;
             let mut pending: Option<Msg> = None;
             loop {
                 let cmds: Vec<Cmd> = pending.take().into_iter().chain(rx.try_iter()).filter_map(|m| if let Msg::Cmd(c) = m { Some(c) } else { None }).collect();
@@ -113,11 +118,25 @@ impl Media {
                     let mut n = read(&session).unwrap_or_default();
                     let key = format!("{}\u{1}{}", n.title, n.artist);
                     let mut fetch = None;
+                    // The cover: read once per song. Some players (Spotify) send it a moment after
+                    // the title, so a song without one tries again on its next few changes.
+                    let had = shared.lock().unwrap().art.clone().filter(|_| key == last_track);
+                    if had.is_some() {
+                        n.art = had;
+                    } else if key != last_track || art_tries < ART_TRIES {
+                        art_tries = if key == last_track { art_tries + 1 } else { 0 };
+                        n.art = read_art(&session);
+                    }
+                    n.art_key = key.clone();
                     {
                         let mut s = shared.lock().unwrap();
+                        let art_came = s.art.is_none() && n.art.is_some();
                         if key == last_track {
                             n.lyrics = std::mem::take(&mut s.lyrics);
                             n.lyrics_state = s.lyrics_state;
+                            if art_came {
+                                crate::tray::wake();
+                            }
                         } else {
                             last_track = key;
                             if want_lyrics && n.active() {
@@ -551,19 +570,38 @@ pub fn preload_logo(id: &str) {
     LOGOS.lock().unwrap().get_or_insert_with(Default::default).insert(id.to_string(), logo);
 }
 
-fn read_logo(info: &windows::ApplicationModel::AppInfo) -> Option<Logo> {
-    use windows::{Foundation::Size, Storage::Streams::DataReader};
-    let px = LOGO_PX as f32;
-    let stream = info.DisplayInfo().ok()?.GetLogo(Size { Width: px, Height: px }).ok()?.OpenReadAsync().ok()?.get().ok()?;
+/// A picture Windows hands over as a stream (an app logo, a song's cover), decoded.
+fn read_image(r: &impl windows::core::Interface) -> Option<image::RgbaImage> {
+    use windows::Storage::Streams::{DataReader, IRandomAccessStreamReference};
+    let stream = r.cast::<IRandomAccessStreamReference>().ok()?.OpenReadAsync().ok()?.get().ok()?;
     let len = stream.Size().ok()? as u32;
-    if len == 0 || len > 4 << 20 {
+    if len == 0 || len > 8 << 20 {
         return None;
     }
     let reader = DataReader::CreateDataReader(&stream).ok()?;
     reader.LoadAsync(len).ok()?.get().ok()?;
     let mut bytes = vec![0u8; len as usize];
     reader.ReadBytes(&mut bytes).ok()?;
-    let mut img = image::load_from_memory(&bytes).ok()?.to_rgba8();
+    Some(image::load_from_memory(&bytes).ok()?.to_rgba8())
+}
+
+pub const ART_PX: u32 = 156; // the cover is drawn at 78 points; twice that stays sharp at 150-200%
+
+/// The playing song's cover, cut to a centred square. None when the player gives none.
+fn read_art(s: &windows::Media::Control::GlobalSystemMediaTransportControlsSession) -> Option<Logo> {
+    let thumb = s.TryGetMediaPropertiesAsync().ok()?.get().ok()?.Thumbnail().ok()?;
+    let img = read_image(&thumb)?;
+    let (w, h) = img.dimensions();
+    let side = w.min(h);
+    let square = image::imageops::crop_imm(&img, (w - side) / 2, (h - side) / 2, side, side).to_image();
+    let img = image::imageops::resize(&square, ART_PX, ART_PX, image::imageops::FilterType::Triangle);
+    Some(Arc::new((ART_PX as usize, ART_PX as usize, img.into_raw())))
+}
+
+fn read_logo(info: &windows::ApplicationModel::AppInfo) -> Option<Logo> {
+    use windows::Foundation::Size;
+    let px = LOGO_PX as f32;
+    let mut img = read_image(&info.DisplayInfo().ok()?.GetLogo(Size { Width: px, Height: px }).ok()?)?;
     // Many logos sit small inside a large transparent square; keep just the drawn part (centred).
     let (w, h) = img.dimensions();
     let solid = |x: u32, y: u32| img.get_pixel(x, y)[3] > 24;
@@ -640,6 +678,25 @@ pub fn notification_watch() -> Arc<Mutex<Vec<Notice>>> {
         }
     });
     out
+}
+
+#[cfg(test)]
+mod art_tests {
+    /// The cover of whatever plays now (skipped when nothing does): cargo test live -- --ignored
+    /// Only the size is checked and printed, never what is playing.
+    #[test]
+    #[ignore]
+    fn live_cover_of_the_playing_song() {
+        let manager = super::Manager::RequestAsync().unwrap().get().unwrap();
+        let Ok(session) = manager.GetCurrentSession() else { return println!("nothing playing") };
+        match super::read_art(&session) {
+            Some(a) => {
+                assert_eq!((a.0, a.1, a.2.len()), (156, 156, 156 * 156 * 4));
+                println!("cover read: {}x{}", a.0, a.1);
+            }
+            None => println!("this player gives no cover"),
+        }
+    }
 }
 
 #[cfg(test)]

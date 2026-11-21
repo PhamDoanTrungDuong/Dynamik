@@ -239,6 +239,7 @@ struct App {
     wheel_rest: Instant,
     scroll_zone: Option<Rect>,
     logos: std::collections::HashMap<String, egui::TextureHandle>, // notification logos by app id
+    art_tex: Option<(String, egui::TextureHandle)>, // the playing song's cover, by song
     locating: std::sync::Arc<std::sync::Mutex<Locating>>,
     ocr: std::sync::Arc<std::sync::Mutex<Option<ocr::Outcome>>>,
     expanded: bool,
@@ -390,7 +391,7 @@ impl App {
                 std::sync::Arc::new(std::sync::Mutex::new(calendar::Today { status: calendar::Status::Ready, events }))
             },
             ical_text, ical_url, cal_fired: HashSet::new(),
-            hotkeys_told: !live, wheel_acc: 0.0, wheel_last: Instant::now(), wheel_rest: Instant::now(), scroll_zone: None, logos: Default::default(),
+            hotkeys_told: !live, wheel_acc: 0.0, wheel_last: Instant::now(), wheel_rest: Instant::now(), scroll_zone: None, logos: Default::default(), art_tex: None,
             now, page: page.min(PAGES.len() - 1), page_anim: page.min(PAGES.len() - 1) as f32, settings_open: shot.is_some() && std::env::args().any(|a| a == "--settings"),
             ask_open: shot.is_some() && std::env::args().any(|a| a == "--ask"),
             // --ask --demo shows a made-up long answer, to check how it wraps.
@@ -406,7 +407,7 @@ impl App {
             water_day, drank, in_bottle, hours, fired, water_snooze: None, water_settings: false, reset_armed: None,
             mode: Mode::Focus, left, running: false, rounds: 0, focus_log, focus_acc: 0.0, last_tick: Instant::now(),
             shelf, shelf_view: ShelfView::Files, clips, clipboard, last_clip, copied: None,
-            battery: battery(), prayer_fired: HashSet::new(), hidden: false, media: media::Media::start(s.lyrics, live), lyrics_open: false, volume: media::volume_watch(), last_volume: None, last_caps: caps_lock(), last_lang: input_lang(), network: media::network_watch(), last_network: None,
+            battery: battery(), prayer_fired: HashSet::new(), hidden: false, media: demo_music(media::Media::start(s.lyrics, live), !live && page == 0), lyrics_open: false, volume: media::volume_watch(), last_volume: None, last_caps: caps_lock(), last_lang: input_lang(), network: media::network_watch(), last_network: None,
             bluetooth: if live { media::bluetooth_watch() } else { Default::default() }, last_headsets: None,
             notices: if live && s.notifications { media::notification_watch() } else { Default::default() },
             weather_place: weather_place.clone(),
@@ -867,6 +868,20 @@ impl App {
         }
     }
 
+    /// The playing song's cover as a texture, made once per song.
+    fn art_texture(&mut self, ctx: &egui::Context, now: &media::Now) -> Option<egui::TextureHandle> {
+        let art = now.art.as_ref()?;
+        if let Some((key, tex)) = &self.art_tex {
+            if *key == now.art_key {
+                return Some(tex.clone());
+            }
+        }
+        let img = egui::ColorImage::from_rgba_unmultiplied([art.0, art.1], &art.2);
+        let tex = ctx.load_texture("cover", img, egui::TextureOptions::LINEAR);
+        self.art_tex = Some((now.art_key.clone(), tex.clone()));
+        Some(tex)
+    }
+
     /// The notifying app's logo as a texture, made once per app from what the watcher read.
     fn logo_texture(&mut self, ctx: &egui::Context, id: &str) -> Option<egui::TextureHandle> {
         if let Some(t) = self.logos.get(id) {
@@ -1234,7 +1249,13 @@ impl App {
         let p = ui.painter().clone();
         let lyr = self.lyrics_open;
         let art = Rect::from_min_size(r.min + if lyr { vec2(28.0, 16.0) } else { vec2(30.0, 18.0) }, vec2(78.0, 78.0));
-        album_art(&p, art);
+        // The song's real cover; the drawn one only while the player gives none.
+        match self.art_texture(ui.ctx(), &now) {
+            Some(tex) => {
+                egui::Image::new(&tex).corner_radius(10).paint_at(ui, art);
+            }
+            None => album_art(&p, art),
+        }
         let tx = art.right() + 22.0;
         let (title, sub) = if now.active() {
             let sub = if now.album.is_empty() { now.artist.clone() } else { format!("{} - {}", now.artist, now.album) };
@@ -3329,6 +3350,33 @@ fn lang_name(lang: u16) -> String {
     let n = unsafe { GetLocaleInfoW(lang as u32, LOCALE_SISO639LANGNAME, buf.as_mut_ptr(), 9) };
     let s = String::from_utf16_lossy(&buf[..(n.max(1) - 1) as usize]).to_uppercase();
     if s.is_empty() { format!("{lang:04X}") } else { s }
+}
+
+/// `--page 0 --demo` on a screenshot: a made-up song with a made-up cover (a violet-to-orange
+/// square), to check the Music page without anyone's real music.
+fn demo_music(m: media::Media, shot_music: bool) -> media::Media {
+    if shot_music && std::env::args().any(|a| a == "--demo") {
+        let px = media::ART_PX as usize;
+        let art: Vec<u8> = (0..px * px)
+            .flat_map(|i| {
+                let (x, y) = ((i % px) as f32 / px as f32, (i / px) as f32 / px as f32);
+                [(120.0 + 120.0 * x) as u8, (40.0 + 90.0 * y) as u8, (200.0 - 150.0 * x * y) as u8, 255]
+            })
+            .collect();
+        *m.now.lock().unwrap() = media::Now {
+            title: "Nơi này có anh (Lofi Version) — bản phối dài cho buổi chiều".into(),
+            artist: "Sơn Tùng M-TP".into(),
+            album: "Chill Việt 2026".into(),
+            playing: true,
+            position: 72.0,
+            duration: 245.0,
+            read_at: Some(Instant::now()),
+            art: Some(std::sync::Arc::new((px, px, art))),
+            art_key: "demo".into(),
+            ..Default::default()
+        };
+    }
+    m
 }
 
 const DEMO_ANSWER: &str = "Sunlight is made of every colour. Air scatters short blue waves far more than red ones, \
