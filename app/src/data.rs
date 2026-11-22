@@ -138,6 +138,7 @@ pub struct Settings {
     pub hide_fullscreen: bool,
     pub welcomed: bool, // the first-start hint has been shown
     pub cal_early: bool, // calendar events also remind 10 minutes before
+    pub prayer_asr: usize, // Ashar: 0 as the method does, 1 Shafi'i, 2 Hanafi
     pub auto_next: bool, // Pomodoro: the next part starts by itself
     pub focus_quiet: bool, // notifications wait while focusing
     pub lyrics: bool,
@@ -230,6 +231,7 @@ impl Settings {
             hide_fullscreen: get(&m, "hide_fullscreen", true),
             welcomed: get(&m, "welcomed", false),
             cal_early: get(&m, "cal_early", true),
+            prayer_asr: Some(get(&m, "prayer_asr", 0usize)).filter(|&a| a <= 2).unwrap_or(0),
             auto_next: get(&m, "auto_next", false),
             focus_quiet: get(&m, "focus_quiet", false),
             lyrics: get(&m, "lyrics", true),
@@ -298,6 +300,7 @@ impl Settings {
             format!("hide_fullscreen={}", s.hide_fullscreen),
             format!("welcomed={}", s.welcomed),
             format!("cal_early={}", s.cal_early),
+            format!("prayer_asr={}", s.prayer_asr),
             format!("auto_next={}", s.auto_next),
             format!("focus_quiet={}", s.focus_quiet),
             format!("lyrics={}", s.lyrics),

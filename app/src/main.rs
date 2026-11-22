@@ -518,7 +518,8 @@ impl App {
 
     /// Prayer times with the per-prayer adjustments from Settings (0x1400863af).
     fn prayer_times(&self, day: NaiveDate) -> [u32; 5] {
-        let t = prayer::times_for(day, self.s.prayer_city, (self.s.prayer_lat, self.s.prayer_lon), self.s.prayer_method.checked_sub(1));
+        let asr = [prayer::Asr::Method, prayer::Asr::Shafii, prayer::Asr::Hanafi][self.s.prayer_asr.min(2)];
+        let t = prayer::times_with(day, self.s.prayer_city, (self.s.prayer_lat, self.s.prayer_lon), self.s.prayer_method.checked_sub(1), asr);
         std::array::from_fn(|i| (t[i] as i32 + self.s.prayer_adj[i]).clamp(0, 1439) as u32)
     }
     fn focus_today(&self) -> u32 { self.focus_log.get(&self.today()).copied().unwrap_or(0) }
@@ -2543,6 +2544,7 @@ impl App {
                         let mut methods: Vec<&str> = vec![t("Usual for the city")];
                         methods.extend(prayer::METHODS.iter().map(|m| m.name));
                         combo(ui, "Method", &mut s.prayer_method, &methods);
+                        combo(ui, "Asr time", &mut s.prayer_asr, &["As the method does", "Shafi'i (shadow ×1)", "Hanafi (shadow ×2)"]);
                         switch_row(ui, "Remind me at prayer time", &mut s.prayer_reminder);
                         ui.add_enabled_ui(s.prayer_reminder, |ui| switch_row(ui, "Also 10 minutes before", &mut s.prayer_early));
                         switch_row(ui, "Pause media at prayer time", &mut s.prayer_pause_media);

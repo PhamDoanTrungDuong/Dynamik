@@ -128,6 +128,7 @@ pub const WORLD: &[(&str, &str, f64, f64, usize, f64, Dst)] = &[
 /// How a country's authority sets the times: Subuh and Isya by the sun's angle below the horizon
 /// (or Isya some minutes after Maghrib), Ashar by shadow length (1 Shafi'i, 2 Hanafi), and the
 /// minutes of caution added to each.
+#[derive(Clone, Copy)]
 pub struct Method {
     pub name: &'static str,
     fajr: f64,
@@ -136,6 +137,7 @@ pub struct Method {
     safety_min: f64,
 }
 
+#[derive(Clone, Copy)]
 enum Isha {
     Angle(f64),
     AfterMaghrib(f64),
@@ -235,9 +237,23 @@ fn sun(jd: f64) -> (f64, f64) {
 /// adjustments) at place `idx` of the City list (`here` is "My location"'s latitude and longitude) with `method`
 /// (None: the place's usual one). "My location" is in this PC's clock, other places in their own.
 pub fn times_for(date: chrono::NaiveDate, idx: usize, here: (f64, f64), method: Option<usize>) -> [u32; 5] {
-    let m = &METHODS[method.unwrap_or_else(|| usual_method(idx)).min(METHODS.len() - 1)];
+    times_with(date, idx, here, method, Asr::Method)
+}
+
+/// How Ashar is reckoned: as the method does, or by one school for any method.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Asr { Method, Shafii, Hanafi }
+
+/// `times_for` with Ashar by `asr` (a Hanafi in Europe can keep MWL's other times, say).
+pub fn times_with(date: chrono::NaiveDate, idx: usize, here: (f64, f64), method: Option<usize>, asr: Asr) -> [u32; 5] {
+    let mut m = METHODS[method.unwrap_or_else(|| usual_method(idx)).min(METHODS.len() - 1)];
+    match asr {
+        Asr::Method => {}
+        Asr::Shafii => m.asr_shadow = 1.0,
+        Asr::Hanafi => m.asr_shadow = 2.0,
+    }
     let (lat, lng, tz) = place_at(date, idx, here);
-    times_at(date, lat, lng, tz, m)
+    times_at(date, lat, lng, tz, &m)
 }
 
 /// Sunrise (Terbit) that day at place `idx`, in minutes after that place's midnight: shown on the
@@ -324,6 +340,9 @@ mod tests {
     #[test]
     fn jakarta_is_plausible() {
         let t = super::times_for(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(), super::DEFAULT_CITY, (0.0, 0.0), None);
+        // Hanafi Ashar with Kemenag's other times: only Ashar moves, and later.
+        let h = super::times_with(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(), super::DEFAULT_CITY, (0.0, 0.0), None, super::Asr::Hanafi);
+        assert!(h[2] > t[2] + 20 && [0, 1, 3, 4].iter().all(|&i| h[i] == t[i]), "{t:?} {h:?}");
         // Kemenag schedule for Jakarta on 1 Jan 2026: Subuh 04:19, Dzuhur 11:58, Maghrib 18:15 (±3 min).
         assert!((256..263).contains(&t[0]), "{t:?}");
         assert!((715..722).contains(&t[1]), "{t:?}");
