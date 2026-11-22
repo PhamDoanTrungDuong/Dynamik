@@ -12,7 +12,14 @@ pub const HOURS_STEP: u16 = 30;
 pub const FROM_MAX: u16 = 1380;
 pub const UNTIL_MAX: u16 = 1440;
 pub const MIN_SPAN: u16 = 60;
-pub const GOALS: [u32; 4] = [1500, 2000, 2500, 3000];
+pub const GOAL_STEP: u32 = 250; // the water goal moves in 0.25 L steps...
+pub const GOAL_MIN: u32 = 1000; // ...from 1 L
+pub const GOAL_MAX: u32 = 4000; // ...to 4 L
+
+/// A water goal on the 0.25 L steps between 1 and 4 L (the nearest one).
+pub fn goal_step(ml: u32) -> u32 {
+    ((ml + GOAL_STEP / 2) / GOAL_STEP * GOAL_STEP).clamp(GOAL_MIN, GOAL_MAX)
+}
 pub const GLASS_ML: u32 = 250; // the Water page's "+250 ml": an ordinary glass
 pub const CLIP_MAX_FREE: usize = 5;
 pub const SNOOZES: [u32; 3] = [5, 10, 15];
@@ -429,6 +436,15 @@ mod tests {
         let s = "a\\b\nc|d";
         assert_eq!(unesc(&esc(s)), s);
     }
+    #[test]
+    fn water_goal_steps() {
+        assert_eq!(goal_step(1500), 1500);
+        assert_eq!(goal_step(1600), 1500);
+        assert_eq!(goal_step(1630), 1750);
+        assert_eq!(goal_step(0), GOAL_MIN);
+        assert_eq!(goal_step(9000), GOAL_MAX);
+    }
+
     #[test]
     fn water_plan_default() {
         let s = Settings::from_text("", "");

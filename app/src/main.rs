@@ -1600,7 +1600,7 @@ impl App {
         let big = p.layout_no_wrap(format!("{liters:.1}"), bold(36.0), WHITE);
         let bw = big.size().x;
         p.galley(pos2(x, r.top() + 64.0 - big.size().y / 2.0), big, WHITE);
-        p.text(pos2(x + bw + 6.0, r.top() + 72.0), Align2::LEFT_CENTER, format!("/ {:.1} L", self.s.goal as f32 / 1000.0), reg(15.0), DIM);
+        p.text(pos2(x + bw + 6.0, r.top() + 72.0), Align2::LEFT_CENTER, format!("/ {} L", litres(self.s.goal)), reg(15.0), DIM);
         if toggle(ui, pos2(r.left() + 210.0, r.top() + 50.0), self.s.water) {
             self.s.water = !self.s.water;
             self.save_water();
@@ -1701,13 +1701,12 @@ impl App {
             p.text(pos2(lx, r.top() + 14.0 + dy), Align2::LEFT_CENTER, name, reg(13.0), DIM);
         }
         let y0 = r.top() + 14.0;
-        // Goal: 1.5 / 2.0 / 2.5 / 3.0 L.
-        let gi = GOALS.iter().position(|&g| g == self.s.goal).unwrap_or(0);
-        let mut gnext = gi;
-        if small_step(ui, pos2(vx - 70.0, y0), "-", "g-") { gnext = gi.saturating_sub(1); }
-        p.text(pos2(vx - 30.0, y0), Align2::CENTER_CENTER, format!("{:.1} L", self.s.goal as f32 / 1000.0), bold(13.0), WHITE);
-        if small_step(ui, pos2(vx + 10.0, y0), "+", "g+") { gnext = (gi + 1).min(GOALS.len() - 1); }
-        self.s.goal = GOALS[gnext];
+        // Goal: 1 to 4 L in steps of 0.25 L.
+        let mut goal = goal_step(self.s.goal);
+        if small_step(ui, pos2(vx - 70.0, y0), "-", "g-") { goal = goal_step(goal.saturating_sub(GOAL_STEP)); }
+        p.text(pos2(vx - 30.0, y0), Align2::CENTER_CENTER, format!("{} L", litres(goal)), bold(13.0), WHITE);
+        if small_step(ui, pos2(vx + 10.0, y0), "+", "g+") { goal = goal_step(goal + GOAL_STEP); }
+        self.s.goal = goal;
         let y1 = y0 + 30.0;
         if small_step(ui, pos2(vx - 70.0, y1), "-", "b-") { self.s.bottle = self.s.bottle.saturating_sub(BOTTLE_STEP).max(BOTTLE_MIN); }
         p.text(pos2(vx - 30.0, y1), Align2::CENTER_CENTER, format!("{} ml", self.s.bottle), bold(13.0), WHITE);
@@ -2202,7 +2201,7 @@ impl App {
                 ring(p, c, 28.0, 6.0, self.drank as f32 / self.s.goal.max(1) as f32, BLUE);
                 drop_icon(p, c, 10.0, BLUE);
                 p.text(pos2(r.left() + 92.0, r.top() + 60.0), Align2::LEFT_CENTER, format!("{:.1} L", self.drank as f32 / 1000.0), bold(22.0), WHITE);
-                p.text(pos2(r.left() + 92.0, r.top() + 84.0), Align2::LEFT_CENTER, tr("of {} L", &[&format!("{:.1}", self.s.goal as f32 / 1000.0)]), reg(12.0), DIM);
+                p.text(pos2(r.left() + 92.0, r.top() + 84.0), Align2::LEFT_CENTER, tr("of {} L", &[&litres(self.s.goal)]), reg(12.0), DIM);
                 // The last 7 days against the goal (a full bar = goal reached); today in blue.
                 for (k, ml) in self.water_week().iter().enumerate() {
                     let h = 14.0 * (*ml as f32 / self.s.goal.max(1) as f32).min(1.0);
@@ -3212,6 +3211,11 @@ fn notice_secs(title: &str, body: &str) -> f32 {
     (NOTICE_POPUP_SECS + (chars - 40.0).max(0.0) / 30.0).min(NOTICE_MAX_SECS)
 }
 
+/// Millilitres as litres: one decimal, or two when needed (1.5, 2.0, 1.75).
+fn litres(ml: u32) -> String {
+    if ml % 100 == 0 { format!("{:.1}", ml as f32 / 1000.0) } else { format!("{:.2}", ml as f32 / 1000.0) }
+}
+
 /// `text` on one line no wider than `width`, ending in "…" when it is cut (cut by real width,
 /// so Vietnamese and Chinese text fill the line too).
 fn fit_line(p: &egui::Painter, text: &str, font: FontId, col: Color32, width: f32) -> std::sync::Arc<egui::Galley> {
@@ -3839,6 +3843,11 @@ fn set_startup(on: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn litres_show_quarters() {
+        assert_eq!((litres(1500), litres(2000), litres(1750), litres(1250)), ("1.5".into(), "2.0".into(), "1.75".into(), "1.25".into()));
+    }
+
     #[test]
     fn notification_icon_pops_then_settles() {
         assert!((pop_in(0.0) - 0.5).abs() < 1e-4);
