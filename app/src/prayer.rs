@@ -236,7 +236,20 @@ fn sun(jd: f64) -> (f64, f64) {
 /// (None: the place's usual one). "My location" is in this PC's clock, other places in their own.
 pub fn times_for(date: chrono::NaiveDate, idx: usize, here: (f64, f64), method: Option<usize>) -> [u32; 5] {
     let m = &METHODS[method.unwrap_or_else(|| usual_method(idx)).min(METHODS.len() - 1)];
-    let (lat, lng, tz) = match idx {
+    let (lat, lng, tz) = place_at(date, idx, here);
+    times_at(date, lat, lng, tz, m)
+}
+
+/// Sunrise (Terbit) that day at place `idx`, in minutes after that place's midnight: shown on the
+/// day arc, not reminded of.
+pub fn sunrise_for(date: chrono::NaiveDate, idx: usize, here: (f64, f64)) -> u32 {
+    let (lat, lng, tz) = place_at(date, idx, here);
+    day_at(date, lat, lng, tz, &METHODS[KEMENAG]).1
+}
+
+/// Latitude, longitude and that day's UTC offset of place `idx`.
+fn place_at(date: chrono::NaiveDate, idx: usize, here: (f64, f64)) -> (f64, f64, f64) {
+    match idx {
         i if i < CITIES.len() => (CITIES[i].2, CITIES[i].3, CITIES[i].4),
         i if i < CITIES.len() + WORLD.len() => {
             let w = WORLD[i - CITIES.len()];
@@ -244,8 +257,7 @@ pub fn times_for(date: chrono::NaiveDate, idx: usize, here: (f64, f64), method: 
             (w.2, w.3, w.5 + if crate::summer(w.6, w.5, noon_utc) { 1.0 } else { 0.0 })
         }
         _ => (here.0, here.1, pc_offset_hours(date)),
-    };
-    times_at(date, lat, lng, tz, m)
+    }
 }
 
 /// This PC's UTC offset at noon that day, so summer time is right on the day it applies.
@@ -256,6 +268,11 @@ fn pc_offset_hours(date: chrono::NaiveDate) -> f64 {
 }
 
 fn times_at(date: chrono::NaiveDate, lat: f64, lng: f64, tz: f64, m: &Method) -> [u32; 5] {
+    day_at(date, lat, lng, tz, m).0
+}
+
+/// The five times, and sunrise (rounded down, with no safety minutes: it isn't a prayer time).
+fn day_at(date: chrono::NaiveDate, lat: f64, lng: f64, tz: f64, m: &Method) -> ([u32; 5], u32) {
     use chrono::Datelike;
     let jd = julian(date.year(), date.month(), date.day()) - lng / (15.0 * 24.0);
     let phi = lat.to_radians();
@@ -297,7 +314,9 @@ fn times_at(date: chrono::NaiveDate, lat: f64, lng: f64, tz: f64, m: &Method) ->
             t[4] = t[3] + isha_most;
         }
     }
-    t.map(|h| (((h + tz - lng / 15.0) * 60.0 + m.safety_min - 1e-6).ceil() as i64).clamp(0, 1439) as u32)
+    let local = |h: f64| (h + tz - lng / 15.0) * 60.0;
+    let rise = if sunrise.is_finite() { (local(sunrise).floor() as i64).clamp(0, 1439) as u32 } else { 0 };
+    (t.map(|h| ((local(h) + m.safety_min - 1e-6).ceil() as i64).clamp(0, 1439) as u32), rise)
 }
 
 #[cfg(test)]
@@ -311,6 +330,9 @@ mod tests {
         assert!((1092..1099).contains(&t[3]), "{t:?}");
         assert!(t.windows(2).all(|w| w[0] < w[1]));
         assert_eq!(super::CITIES.len(), 84);
+        // Kemenag Terbit for Jakarta, 1 Jan 2026: 05:39 (±3 min), between Subuh and Dzuhur.
+        let rise = super::sunrise_for(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(), super::DEFAULT_CITY, (0.0, 0.0));
+        assert!((336..343).contains(&rise) && rise > t[0] && rise < t[1], "{rise}");
         assert_eq!(super::CITIES[super::DEFAULT_CITY].1, "Jakarta");
     }
 

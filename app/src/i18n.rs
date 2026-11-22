@@ -390,6 +390,7 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("Couldn't find your location", "Không tìm được vị trí", "无法找到你的位置", "Position introuvable"),
     ("Check Windows Settings › Privacy › Location, or pick a city in Settings", "Kiểm tra Cài đặt Windows › Quyền riêng tư › Vị trí, hoặc chọn thành phố trong Cài đặt", "请检查 Windows 设置 › 隐私 › 位置，或在设置中选择城市", "Vérifiez Paramètres Windows › Confidentialité › Position, ou choisissez une ville"),
     ("No location yet", "Chưa có vị trí", "还没有位置", "Pas encore de position"),
+    ("Imsak {} · Sunrise {}", "Imsak {} · Mặt trời mọc {}", "伊姆萨克 {} · 日出 {}", "Imsak {} · Lever du soleil {}"),
     // The five prayers (prayer::NAMES).
     ("Fajr", "Fajr", "晨礼", "Fajr"),
     ("Dhuhr", "Dhuhr", "晌礼", "Dhohr"),

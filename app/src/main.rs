@@ -66,6 +66,8 @@ const PRAYER_POPUP_SECS: f32 = 10.0;
 const PRAYER_EARLY_SECS: f32 = 6.0;
 const PRAYER_WINDOW: (f32, f32) = (-0.05, 2.0); // minutes around the due time
 const PRAYER_CATCHUP_MIN: f32 = 30.0; // a missed prayer reminder still shows this long after
+const PRAYER_LABEL_GAP: f32 = 42.0; // the day arc's labels stay this far apart (points)
+const IMSAK_BEFORE_MIN: u32 = 10; // Imsak, as Indonesia keeps it: 10 minutes before Subuh/Fajr
 // The indicator (volume, Caps Lock, input language) pop-up: its hide timer is 1.4 s (timer 6, 0x14007df9e).
 const HUD_SECS: f32 = 1.4;
 // Network pop-up (sub_14000311f): a change must hold 1.5 s (timer 16), then shows for 3.2 s (timer 4).
@@ -2079,7 +2081,9 @@ impl App {
         let today = self.today();
         let city = self.city_name();
         let city = city.as_str();
-        p.text(pos2(r.left() + 100.0, r.top() + 24.0), Align2::LEFT_CENTER, city, reg(13.0), DIM);
+        // The city just after the page title, however long the title is in this language.
+        let title_w = p.layout_no_wrap(t("Prayer").into(), bold(17.0), WHITE).size().x;
+        p.text(pos2(r.left() + 22.0 + title_w + 12.0, r.top() + 24.0), Align2::LEFT_CENTER, city, reg(13.0), DIM);
         let t = self.prayer_times(today);
         let m = self.now_min();
         let now_f = m as f32 + self.now.second() as f32 / 60.0;
@@ -2119,15 +2123,23 @@ impl App {
         if cut > 0 {
             p.add(Shape::line(pts[..=cut].to_vec(), Stroke::new(2.5_f32, BLUE)));
         }
+        // Sunrise: a small hollow sun on the arc, no label (it isn't a prayer).
+        let rise = prayer::sunrise_for(today, self.s.prayer_city, (self.s.prayer_lat, self.s.prayer_lon));
+        p.circle_stroke(xy(rise as f32), 4.0, Stroke::new(1.3_f32, Color32::from_rgb(253, 230, 160)));
+        // Labels at least LABEL_GAP apart, so close times (Maghrib and Isha far north) don't overlap.
+        let label_x = spread(&t.map(|pt| xy(pt as f32).x), PRAYER_LABEL_GAP, ax0 - 10.0, ax1 + 14.0);
         for (i, &pt) in t.iter().enumerate() {
             let pos = xy(pt as f32);
             p.circle_filled(pos, 3.0, if (pt as f32) <= now_f { Color32::from_rgb(147, 197, 253) } else { Color32::from_gray(150) });
             let is_next = next == Some(i);
             let col = if is_next { WHITE } else { DIM };
             let f = if is_next { bold(11.0) } else { reg(11.0) };
-            p.text(pos2(pos.x, base + 16.0), Align2::CENTER_CENTER, i18n::t(prayer::NAMES[i]), f.clone(), col);
-            p.text(pos2(pos.x, base + 30.0), Align2::CENTER_CENTER, hm(pt), reg(10.0), DIM);
+            p.text(pos2(label_x[i], base + 16.0), Align2::CENTER_CENTER, i18n::t(prayer::NAMES[i]), f.clone(), col);
+            p.text(pos2(label_x[i], base + 30.0), Align2::CENTER_CENTER, hm(pt), reg(10.0), DIM);
         }
+        // Imsak (10 minutes before Fajr, kept in Ramadan) and sunrise, under the countdown.
+        let imsak = t[0].saturating_sub(IMSAK_BEFORE_MIN);
+        p.text(pos2(x, r.top() + 156.0), Align2::LEFT_CENTER, tr("Imsak {} · Sunrise {}", &[&hm(imsak), &hm(rise)]), reg(11.0), DIM);
         if now_f >= t0 && now_f <= t1 {
             let sun = xy(now_f);
             for (rad, a) in [(14.0, 30), (10.0, 70), (6.5, 255)] {
@@ -3320,6 +3332,25 @@ fn find_location(locating: &std::sync::Arc<std::sync::Mutex<Locating>>) {
     });
 }
 
+/// Moves label centres `xs` (left to right) apart to at least `gap`, as little as it can, staying
+/// within `lo..hi` where there is room.
+fn spread(xs: &[f32], gap: f32, lo: f32, hi: f32) -> Vec<f32> {
+    let mut out = xs.to_vec();
+    for i in 1..out.len() {
+        out[i] = out[i].max(out[i - 1] + gap);
+    }
+    if let Some(last) = out.last_mut() {
+        *last = last.min(hi);
+    }
+    for i in (0..out.len().saturating_sub(1)).rev() {
+        out[i] = out[i].min(out[i + 1] - gap);
+    }
+    if let Some(first) = out.first_mut() {
+        *first = first.max(lo);
+    }
+    out
+}
+
 /// A row inside `area` that scrolls sideways when its items don't fit; the mouse wheel scrolls it
 /// too (not only Shift + wheel).
 fn sideways(ui: &mut egui::Ui, area: Rect, id: &str, add: impl FnOnce(&mut egui::Ui)) {
@@ -3951,6 +3982,14 @@ fn set_startup(on: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn arc_labels_spread_apart() {
+        // Maghrib and Isha 10 points apart get pushed to the gap; well-spaced ones stay put.
+        assert_eq!(spread(&[0.0, 100.0, 150.0, 200.0, 210.0], 42.0, -10.0, 300.0), vec![0.0, 100.0, 150.0, 200.0, 242.0]);
+        // At the right edge they move left instead.
+        assert_eq!(spread(&[0.0, 100.0, 250.0, 255.0], 42.0, -10.0, 260.0), vec![0.0, 100.0, 218.0, 260.0]);
+    }
+
     #[test]
     fn litres_show_quarters() {
         assert_eq!((litres(1500), litres(2000), litres(1750), litres(1250)), ("1.5".into(), "2.0".into(), "1.75".into(), "1.25".into()));
