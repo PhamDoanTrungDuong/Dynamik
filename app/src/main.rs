@@ -1210,7 +1210,7 @@ impl App {
                     close = true;
                 }
                 if pill_button(ui, Rect::from_min_size(pos2(right - 78.0, r.center().y - 15.0), vec2(78.0, 30.0)), t("Snooze"), BTN, "p2") {
-                    self.water_snooze = Some((self.now_min() + WATER_SNOOZE_MIN).min(1439));
+                    self.water_snooze = Some((self.now_min() + self.s.water_snooze).min(1439));
                     close = true;
                 }
             }
@@ -2403,6 +2403,12 @@ impl App {
                     number(ui, "Long break", &mut s.long_break, 1..=60, " min");
                     switch_row(ui, "Go on by itself — the next break or focus starts without a click", &mut s.auto_next);
                     switch_row(ui, "Quiet focus — notifications wait until focus ends", &mut s.focus_quiet);
+                });
+                card(ui, "Water reminders", |ui| {
+                    let mut sn = SNOOZES.iter().position(|&l| l == s.water_snooze).unwrap_or(1);
+                    if combo(ui, "\"Snooze\" waits", &mut sn, &["5 min", "10 min", "15 min"]) {
+                        s.water_snooze = SNOOZES[sn];
+                    }
                 });
                 card(ui, "To-do reminders", |ui| {
                     switch_row(ui, "When a task starts", &mut s.todo_start);

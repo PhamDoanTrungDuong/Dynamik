@@ -105,6 +105,7 @@ pub struct Settings {
     pub todo_start: bool,
     pub todo_end: bool,
     pub snooze: u32,
+    pub water_snooze: u32, // minutes the Water pop-up's Snooze waits (5, 10 or 15)
     pub water: bool,
     pub goal: u32,
     pub bottle: u32,
@@ -192,6 +193,7 @@ impl Settings {
             todo_start: get(&m, "todo_start", true),
             todo_end: get(&m, "todo_end", true),
             snooze: get(&m, "snooze", 10u32),
+            water_snooze: Some(get(&m, "water_snooze", WATER_SNOOZE_MIN)).filter(|v| SNOOZES.contains(v)).unwrap_or(WATER_SNOOZE_MIN),
             // Water settings live in water.txt (keys from 0x1400e31e0), defaults from 0x140049847.
             water: get(&w, "on", 1u8) != 0,
             goal: get(&w, "goal", 1500),
@@ -262,6 +264,7 @@ impl Settings {
             format!("todo_start={}", s.todo_start),
             format!("todo_end={}", s.todo_end),
             format!("snooze={}", s.snooze),
+            format!("water_snooze={}", s.water_snooze),
             format!("prayer={}", s.prayer),
             format!("prayer_city={}", s.prayer_city),
             format!("prayer_method={}", s.prayer_method),

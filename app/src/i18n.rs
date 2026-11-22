@@ -301,6 +301,8 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("When a task starts", "Khi việc bắt đầu", "任务开始时", "Au début d'une tâche"),
     ("When time is up", "Khi hết giờ", "时间到时", "À la fin du temps"),
     ("\"Later\" waits", "\"Để sau\" chờ", "\"稍后\"等待", "« Plus tard » attend"),
+    ("Water reminders", "Nhắc uống nước", "喝水提醒", "Rappels d'eau"),
+    ("\"Snooze\" waits", "\"Để sau\" chờ", "\"稍后\"等待", "« Plus tard » attend"),
     ("5 min", "5 phút", "5 分钟", "5 min"),
     ("10 min", "10 phút", "10 分钟", "10 min"),
     ("15 min", "15 phút", "15 分钟", "15 min"),
