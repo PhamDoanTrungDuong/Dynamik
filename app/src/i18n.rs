@@ -196,6 +196,8 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("Drank", "Đã uống", "已喝", "Bu"),
     ("Snooze", "Để sau", "稍后", "Plus tard"),
     ("to", "đến", "至", "à"),
+    ("until {}", "đến {}", "至 {}", "jusqu'à {}"),
+    ("Calendar · in {} min", "Lịch · còn {} phút", "日历 · {} 分钟后", "Agenda · dans {} min"),
     ("Not there any more", "Không còn ở đó", "已不在原处", "N'est plus là"),
     ("Moved or deleted · right-click to remove", "Đã bị chuyển hoặc xóa · click phải để gỡ", "已移动或删除 · 右键移除", "Déplacé ou supprimé · clic droit pour retirer"),
     ("Click to copy · drag into a chat · right-click to remove", "Click để chép · kéo vào khung chat · click phải để xóa", "点击复制 · 拖入聊天 · 右键删除", "Clic pour copier · glisser dans un chat · clic droit pour retirer"),

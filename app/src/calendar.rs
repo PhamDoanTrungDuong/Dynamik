@@ -13,8 +13,9 @@ const RETRY: std::time::Duration = std::time::Duration::from_secs(60);
 #[derive(Clone, Debug, PartialEq)]
 pub struct Event {
     pub title: String,
-    pub start: Option<u32>, // minutes after midnight; None for an all-day event
-    pub dur: u32,           // minutes
+    pub start: Option<u32>, // minutes after midnight; None for an all-day event (or one carried over)
+    pub dur: u32,           // minutes; for one carried over from yesterday, when it ends today
+    pub carried: bool,      // began yesterday and runs past midnight into today
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -286,8 +287,15 @@ fn on(items: &[Item], day: NaiveDate) -> Vec<Event> {
             title: it.title.clone(), // empty when the event has none
             start: (!it.all_day).then(|| it.start.time().num_seconds_from_midnight() / 60),
             dur: if it.all_day { 0 } else { it.minutes.min(24 * 60) as u32 },
+            carried: false,
         })
         .collect();
+    // Timed events from yesterday still going after midnight show too, with when they end.
+    let yesterday = day - Duration::days(1);
+    out.extend(items.iter().filter(|it| !it.all_day && starts_on(it, yesterday)).filter_map(|it| {
+        let ends = (it.start.time().num_seconds_from_midnight() / 60) as i64 + it.minutes - 24 * 60;
+        (ends > 0).then(|| Event { title: it.title.clone(), start: None, dur: ends.min(24 * 60) as u32, carried: true })
+    }));
     out.sort_by_key(|e| e.start.map_or(-1, |s| s as i64));
     out
 }
@@ -313,7 +321,7 @@ END:VCALENDAR\r\n";
     fn weekly_series_with_skipped_and_moved_days() {
         let items = parse(ICS);
         let titles = |day: &str| on(&items, d(day)).into_iter().map(|e| e.title).collect::<Vec<_>>();
-        assert_eq!(on(&items, d("2026-11-02")), vec![Event { title: "Standup, team".into(), start: Some(540), dur: 30 }]);
+        assert_eq!(on(&items, d("2026-11-02")), vec![Event { title: "Standup, team".into(), start: Some(540), dur: 30, carried: false }]);
         assert!(titles("2026-11-03").is_empty()); // a Tuesday
         assert!(titles("2026-11-11").is_empty()); // EXDATE
         assert_eq!(titles("2026-11-13"), vec!["Standup, team"]);
@@ -343,6 +351,16 @@ BEGIN:VEVENT\r\nUID:class\r\nDTSTART:20261103T013000Z\r\nDTEND:20261103T030000Z\
 BEGIN:VEVENT\r\nUID:class\r\nRECURRENCE-ID:20261117T013000Z\r\nDTSTART:20261117T013000Z\r\nSTATUS:CANCELLED\r\nSUMMARY:Class\r\nEND:VEVENT\r\n\
 BEGIN:VEVENT\r\nUID:last\r\nDTSTART:20261130T090000\r\nRRULE:FREQ=MONTHLY;BYMONTHDAY=-1;COUNT=3\r\nSUMMARY:Month end\r\nEND:VEVENT\r\n\
 END:VCALENDAR\r\n";
+
+    #[test]
+    fn overnight_events_carry_into_the_next_day() {
+        let ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART:20261121T223000\r\nDTEND:20261122T013000\r\nSUMMARY:Night shift\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let items = parse(ics);
+        assert_eq!(on(&items, d("2026-11-21")), vec![Event { title: "Night shift".into(), start: Some(1350), dur: 180, carried: false }]);
+        // The next day: carried over, ending at 01:30, with no start to remind of.
+        assert_eq!(on(&items, d("2026-11-22")), vec![Event { title: "Night shift".into(), start: None, dur: 90, carried: true }]);
+        assert!(on(&items, d("2026-11-23")).is_empty());
+    }
 
     #[test]
     fn daily_interval_until_and_month_days() {

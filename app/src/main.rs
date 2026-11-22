@@ -91,6 +91,7 @@ const BLINK_EVERY_MS: i64 = 4200;
 const BLINK_MS: i64 = 180;
 const LONG_BREAK_EVERY: u32 = 4;
 const WATER_LOG_DAYS: usize = 60; // days of water history kept
+const CAL_EARLY_MIN: u32 = 10; // calendar events also remind this many minutes before
 const UNDO_SECS: f32 = 10.0; // how long the Water page offers to take a drink back
 const SLEEP_GAP_SECS: f64 = 5.0; // a gap this long between looks while Pomodoro runs = the PC slept
 const RESET_CONFIRM_SECS: f32 = 3.0;
@@ -232,7 +233,7 @@ struct App {
     ical_text: String,
     ical_url: std::sync::Arc<std::sync::Mutex<String>>,
     calendar: std::sync::Arc<std::sync::Mutex<calendar::Today>>,
-    cal_fired: HashSet<(NaiveDate, u32, String)>,
+    cal_fired: HashSet<(NaiveDate, u32, String, bool)>, // (day, start, title, the early one)
     // Shortcuts: whether a taken one still has to be told. Page turning by scroll: the scroll
     // gathered so far, when it last moved, and until when a flick is ignored after a turn;
     // `scroll_zone` is a list on the page that scrolls itself (no page turns over it).
@@ -402,8 +403,8 @@ impl App {
             } else {
                 // --demo on a screenshot of To-do shows made-up events.
                 let demo = std::env::args().any(|a| a == "--demo") && page == 4;
-                let ev = |title: &str, start, dur| calendar::Event { title: title.into(), start, dur };
-                let events = if demo { vec![ev("Team trip", None, 0), ev("Standup", Some(540), 30)] } else { vec![] };
+                let ev = |title: &str, start, dur, carried| calendar::Event { title: title.into(), start, dur, carried };
+                let events = if demo { vec![ev("Night shift", None, 90, true), ev("Team trip", None, 0, false), ev("Standup", Some(540), 30, false)] } else { vec![] };
                 std::sync::Arc::new(std::sync::Mutex::new(calendar::Today { status: calendar::Status::Ready, events }))
             },
             ical_text, ical_url, cal_fired: HashSet::new(),
@@ -699,18 +700,24 @@ impl App {
             }
         }
 
-        // Calendar events remind as tasks do: at the start, within the first hour, once.
+        // Calendar events remind as tasks do: at the start, within the first hour, once; and
+        // (cal_early) 10 minutes before, as meetings want.
         if self.alert.is_none() && self.s.todo_start {
             let today = self.today();
             let events = self.calendar.lock().unwrap().events.clone();
-            let due = events.into_iter().find(|e| {
-                e.start.is_some_and(|st| m >= st && m < st + 60) && !self.cal_fired.contains(&(today, e.start.unwrap(), e.title.clone()))
+            let due = events.into_iter().find_map(|e| {
+                let st = e.start?;
+                let early = self.s.cal_early && st >= CAL_EARLY_MIN && m >= st - CAL_EARLY_MIN && m < st;
+                let now = m >= st && m < st + 60;
+                let key = (today, st, e.title.clone(), early);
+                ((early || now) && !self.cal_fired.contains(&key)).then_some((e, key))
             });
-            if let Some(e) = due {
-                let st = e.start.unwrap();
-                self.cal_fired.insert((today, st, e.title.clone()));
+            if let Some((e, key)) = due {
+                let early = key.3;
+                self.cal_fired.insert(key);
                 let title = if e.title.is_empty() { t("(No title)").to_string() } else { e.title };
-                self.notify(t("Calendar"), &title, Kind::Event(st));
+                let head = if early { tr("Calendar · in {} min", &[&CAL_EARLY_MIN]) } else { t("Calendar").to_string() };
+                self.notify(&head, &title, Kind::Event(e.start.unwrap_or(0)));
             }
         }
 
@@ -1980,7 +1987,11 @@ impl App {
                     calendar_icon(pp, pos2(row.left() + 20.0, row.center().y), BLUE);
                     let title = if e.title.is_empty() { t("(No title)") } else { e.title.as_str() };
                     pp.text(pos2(row.left() + 38.0, row.center().y), Align2::LEFT_CENTER, ellipsize(title, 26), reg(14.0), WHITE);
-                    let when = e.start.map_or_else(|| t("All day").to_string(), |s| hm(s));
+                    let when = match e.start {
+                        Some(s) => hm(s),
+                        None if e.carried => tr("until {}", &[&hm(e.dur)]),
+                        None => t("All day").to_string(),
+                    };
                     pp.text(pos2(row.right() - 10.0, row.center().y), Align2::RIGHT_CENTER, when, reg(12.0), DIM);
                 }
                 for (i, t) in self.tasks.iter().enumerate() {
@@ -2558,7 +2569,7 @@ impl App {
                         _ => t("Reading the calendar…").to_string(),
                     };
                     ui.label(egui::RichText::new(state).font(reg(12.0)).color(DIM));
-                    ui.add_space(8.0);
+                    switch_row(ui, "Also 10 minutes before", &mut s.cal_early);
                 });
                 card(ui, "Pages", |ui| {
                     // Reorder with the arrows, leave pages out with the switch; one always stays.

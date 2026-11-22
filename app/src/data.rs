@@ -137,6 +137,7 @@ pub struct Settings {
     pub popup_wifi: bool,
     pub hide_fullscreen: bool,
     pub welcomed: bool, // the first-start hint has been shown
+    pub cal_early: bool, // calendar events also remind 10 minutes before
     pub auto_next: bool, // Pomodoro: the next part starts by itself
     pub focus_quiet: bool, // notifications wait while focusing
     pub lyrics: bool,
@@ -228,6 +229,7 @@ impl Settings {
             popup_wifi: get(&m, "popup_wifi", true),
             hide_fullscreen: get(&m, "hide_fullscreen", true),
             welcomed: get(&m, "welcomed", false),
+            cal_early: get(&m, "cal_early", true),
             auto_next: get(&m, "auto_next", false),
             focus_quiet: get(&m, "focus_quiet", false),
             lyrics: get(&m, "lyrics", true),
@@ -295,6 +297,7 @@ impl Settings {
             format!("popup_wifi={}", s.popup_wifi),
             format!("hide_fullscreen={}", s.hide_fullscreen),
             format!("welcomed={}", s.welcomed),
+            format!("cal_early={}", s.cal_early),
             format!("auto_next={}", s.auto_next),
             format!("focus_quiet={}", s.focus_quiet),
             format!("lyrics={}", s.lyrics),
