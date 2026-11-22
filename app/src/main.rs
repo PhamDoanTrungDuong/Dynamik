@@ -240,7 +240,7 @@ struct App {
     wheel_acc: f32,
     wheel_last: Instant,
     wheel_rest: Instant,
-    scroll_zone: Option<Rect>,
+    scroll_zone: Option<(Rect, bool)>, // (where, whether sideways scroll may still turn pages)
     logos: std::collections::HashMap<String, egui::TextureHandle>, // notification logos by app id
     art_tex: Option<(String, egui::TextureHandle)>, // the playing song's cover, by song
     locating: std::sync::Arc<std::sync::Mutex<Locating>>,
@@ -425,7 +425,9 @@ impl App {
             water_log,
             last_drink: (!live && page == 2 && std::env::args().any(|a| a == "--demo")).then(|| (250, now.hour() as usize, 0, Instant::now())),
             mode: Mode::Focus, left, running: false, rounds: 0, rounds_day: now.date(), held_notice: None, focus_log, focus_acc: 0.0, last_tick: Instant::now(),
-            shelf, shelf_view: ShelfView::Files, clips, clipboard, last_clip, copied: None,
+            // --clips: a screenshot of the clipboard side.
+            shelf, shelf_view: if !live && std::env::args().any(|a| a == "--clips") { ShelfView::Clipboard } else { ShelfView::Files },
+            clips, clipboard, last_clip, copied: None,
             battery: battery(), prayer_fired: HashSet::new(), hidden: false, media: demo_music(media::Media::start(s.lyrics, live), !live && page == 0), lyrics_open: false, volume: media::volume_watch(), last_volume: None, last_caps: caps_lock(), last_lang: input_lang(), network: media::network_watch(), last_network: None,
             bluetooth: if live { media::bluetooth_watch() } else { Default::default() }, last_headsets: None,
             notices: if live && s.notifications { media::notification_watch() } else { Default::default() },
@@ -934,16 +936,21 @@ impl App {
     }
 
     /// The mouse wheel or a touchpad swipe turns pages (down or left = next), and so do the ← →
-    /// keys while nothing is being typed. Over a list that scrolls itself, only sideways scroll turns.
+    /// keys while nothing is being typed. Over a list that scrolls itself, only sideways scroll turns
+    /// (none at all over one that scrolls sideways).
     fn turn_by_scroll_and_keys(&mut self, ui: &mut egui::Ui) {
         let (order, at) = (self.order(), self.pos());
         let typing = ui.ctx().memory(|m| m.focused().is_some());
         let (left, right, d, over) = ui.input(|i| {
             let keys = !typing && i.modifiers.is_none();
-            let over = i.pointer.hover_pos().zip(self.scroll_zone).is_some_and(|(p, z)| z.contains(p));
+            let over = i.pointer.hover_pos().zip(self.scroll_zone).filter(|(p, z)| z.0.contains(*p)).map(|(_, z)| z.1);
             (keys && i.key_pressed(egui::Key::ArrowLeft), keys && i.key_pressed(egui::Key::ArrowRight), i.raw_scroll_delta, over)
         });
-        let step = if over { d.x } else { d.x + d.y };
+        let step = match over {
+            Some(true) => d.x,
+            Some(false) => 0.0,
+            None => d.x + d.y,
+        };
         if step != 0.0 {
             // A pause ends the flick; what it gathered is dropped.
             if self.wheel_last.elapsed().as_secs_f32() > WHEEL_REST_SECS {
@@ -1783,26 +1790,34 @@ impl App {
                 return;
             }
             let (mut remove, mut drag) = (None, None);
-            for (i, path) in self.shelf.iter().enumerate().take(5) {
-                let cx = area.left() + 44.0 + i as f32 * 88.0;
-                let icon = Rect::from_center_size(pos2(cx, area.top() + 34.0), vec2(56.0, 56.0));
-                file_icon(&p, icon, path);
-                let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                p.text(pos2(cx, area.top() + 76.0), Align2::CENTER_CENTER, ellipsize(&name, 12), bold(12.0), WHITE);
-                let size = std::fs::metadata(path).map(|m| human_size(m.len())).unwrap_or_default();
-                p.text(pos2(cx, area.top() + 92.0), Align2::CENTER_CENTER, size, reg(11.0), DIM);
-                let resp = ui.interact(icon.union(Rect::from_center_size(pos2(cx, area.top() + 80.0), vec2(80.0, 30.0))), ui.id().with(("file", i)), Sense::click_and_drag());
-                if resp.clicked() {
-                    let _ = std::process::Command::new("explorer").arg(path).spawn();
+            // Side by side; more than fit scroll sideways (the wheel scrolls them, not the pages).
+            self.scroll_zone = Some((area, false));
+            let shelf = self.shelf.clone();
+            sideways(ui, area, "shelf-files", |ui| {
+                for (i, path) in shelf.iter().enumerate() {
+                    // 82 wide: five fit with an edge of the sixth showing, so more is plainly there.
+                    let (cell, resp) = ui.allocate_exact_size(vec2(82.0, area.height()), Sense::click_and_drag());
+                    let p = ui.painter();
+                    let cx = cell.center().x;
+                    let icon = Rect::from_center_size(pos2(cx, cell.top() + 34.0), vec2(56.0, 56.0));
+                    file_icon(p, icon, path);
+                    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                    let g = fit_line(p, &name, bold(12.0), WHITE, 76.0);
+                    p.galley(pos2(cx - g.size().x / 2.0, cell.top() + 76.0 - g.size().y / 2.0), g, WHITE);
+                    let size = std::fs::metadata(path).map(|m| human_size(m.len())).unwrap_or_default();
+                    p.text(pos2(cx, cell.top() + 92.0), Align2::CENTER_CENTER, size, reg(11.0), DIM);
+                    if resp.clicked() {
+                        let _ = std::process::Command::new("explorer").arg(path).spawn();
+                    }
+                    if resp.drag_started() && path.exists() {
+                        drag = Some(path.clone());
+                    }
+                    if resp.secondary_clicked() {
+                        remove = Some(i);
+                    }
+                    resp.on_hover_text(t("Click to open · drag out · right-click to remove"));
                 }
-                if resp.drag_started() && path.exists() {
-                    drag = Some(path.clone());
-                }
-                if resp.secondary_clicked() {
-                    remove = Some(i);
-                }
-                resp.on_hover_text(t("Click to open · drag out · right-click to remove"));
-            }
+            });
             if let Some(path) = drag {
                 dragout::files(&[path]);
             }
@@ -1823,30 +1838,37 @@ impl App {
             }
             let (mut copy, mut drag) = (None, None);
             let now = Utc::now().timestamp();
-            for (i, (ts, text)) in self.clips.iter().enumerate().take(4) {
-                let card = Rect::from_min_size(pos2(area.left() + i as f32 * 106.0, area.top() - 2.0), vec2(98.0, 104.0));
-                let resp = ui.interact(card, ui.id().with(("clip", i)), Sense::click_and_drag());
-                if resp.drag_started() {
-                    drag = Some(text.clone());
+            self.scroll_zone = Some((area, false));
+            let clips = self.clips.clone();
+            let copied = self.copied.clone();
+            sideways(ui, area.translate(vec2(0.0, -2.0)), "shelf-clips", |ui| {
+                for (i, (ts, text)) in clips.iter().enumerate() {
+                    let (cell, resp) = ui.allocate_exact_size(vec2(106.0, 104.0), Sense::click_and_drag());
+                    let card = Rect::from_min_size(cell.min, vec2(98.0, 104.0));
+                    if resp.drag_started() {
+                        drag = Some(text.clone());
+                    }
+                    let p = ui.painter();
+                    p.rect_filled(card, 12.0, if resp.hovered() { Color32::from_gray(30) } else { CARD });
+                    if i == 0 {
+                        p.rect_stroke(card, 12.0, Stroke::new(1.5_f32, Color32::from_rgb(99, 102, 241)), egui::StrokeKind::Inside);
+                    }
+                    let just = copied.as_ref().is_some_and(|(c, at)| c == text && at.elapsed().as_secs() < 2);
+                    let body = if just { t("Copied").to_string() } else { text.clone() };
+                    let g = p.layout(body, bold(12.0), WHITE, card.width() - 22.0);
+                    let rows: Vec<_> = g.rows.iter().take(3).collect();
+                    let clipped = rows.len() < g.rows.len();
+                    let shown: String = clip_text(text, &g, 3, clipped, just);
+                    let g2 = p.layout(shown, bold(12.0), WHITE, card.width() - 22.0);
+                    p.galley(card.min + vec2(11.0, 12.0), g2, WHITE);
+                    p.text(pos2(card.left() + 11.0, card.bottom() - 16.0), Align2::LEFT_CENTER, ago(now - ts), reg(11.0), DIM);
+                    if resp.clicked() {
+                        copy = Some(text.clone());
+                    }
                 }
-                p.rect_filled(card, 12.0, if resp.hovered() { Color32::from_gray(30) } else { CARD });
-                if i == 0 {
-                    p.rect_stroke(card, 12.0, Stroke::new(1.5_f32, Color32::from_rgb(99, 102, 241)), egui::StrokeKind::Inside);
-                }
-                let just = self.copied.as_ref().is_some_and(|(c, at)| c == text && at.elapsed().as_secs() < 2);
-                let body = if just { t("Copied").to_string() } else { text.clone() };
-                let g = p.layout(body, bold(12.0), WHITE, card.width() - 22.0);
-                let rows: Vec<_> = g.rows.iter().take(3).collect();
-                let clipped = rows.len() < g.rows.len();
-                let shown: String = clip_text(text, &g, 3, clipped, just);
-                let g2 = p.layout(shown, bold(12.0), WHITE, card.width() - 22.0);
-                p.galley(card.min + vec2(11.0, 12.0), g2, WHITE);
-                p.text(pos2(card.left() + 11.0, card.bottom() - 16.0), Align2::LEFT_CENTER, ago(now - ts), reg(11.0), DIM);
-                if resp.clicked() {
-                    copy = Some(text.clone());
-                }
-            }
-            p.text(pos2(area.left() + 4.0, r.top() + 168.0), Align2::LEFT_CENTER, tr("{} items · click to copy · drag into a chat", &[&self.clips.len()]), reg(12.0), DIM);
+            });
+            // Above the page dots (it used to run into them).
+            p.text(pos2(area.left() + 4.0, r.top() + 160.0), Align2::LEFT_CENTER, tr("{} items · click to copy · drag into a chat", &[&self.clips.len()]), reg(12.0), DIM);
             if let Some(t) = drag {
                 dragout::text(&t);
             }
@@ -1921,7 +1943,7 @@ impl App {
         let mut toggle_i = None;
         let mut remove = None;
         let mut edit = None;
-        self.scroll_zone = Some(list); // the wheel scrolls this list, not the pages
+        self.scroll_zone = Some((list, true)); // the wheel scrolls this list, not the pages
         ui.allocate_new_ui(egui::UiBuilder::new().max_rect(list), |ui| {
             egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
                 // Today's calendar events come first; they are read from the calendar, so not editable here.
@@ -3223,6 +3245,18 @@ fn fit_line(p: &egui::Painter, text: &str, font: FontId, col: Color32, width: f3
     let mut job = egui::text::LayoutJob::simple_singleline(text.replace('\n', " "), font, col);
     job.wrap = egui::text::TextWrapping { max_width: width.max(10.0), max_rows: 1, break_anywhere: true, overflow_character: Some('…') };
     p.layout_job(job)
+}
+
+/// A row inside `area` that scrolls sideways when its items don't fit; the mouse wheel scrolls it
+/// too (not only Shift + wheel).
+fn sideways(ui: &mut egui::Ui, area: Rect, id: &str, add: impl FnOnce(&mut egui::Ui)) {
+    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(area), |ui| {
+        ui.style_mut().always_scroll_the_only_direction = true;
+        egui::ScrollArea::horizontal().id_salt(id).auto_shrink(false).show(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            ui.horizontal_top(add);
+        });
+    });
 }
 
 /// A steady colour for an app without a logo, picked from its name, so each app keeps its own.
