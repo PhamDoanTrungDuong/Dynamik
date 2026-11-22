@@ -41,7 +41,13 @@ hiện trạng thái và mở ra thành bảng công cụ nhỏ.*
   sẽ xong, dải 4 vòng và số phút đã tập trung hôm nay. Settings › Pomodoro: thời lượng từng phần, tự
   chạy tiếp, tập trung yên tĩnh (thông báo chờ đến khi hết giờ tập trung). Số vòng về 0 khi sang ngày
   mới; máy ngủ thì đồng hồ tạm dừng.
-- **Water**: nhắc uống nước theo khung giờ, dung tích bình, mục tiêu và biểu đồ theo giờ.
+- **Water**: thanh tiến độ và dòng "Hôm nay · 45% · lần tới 14:30", biểu đồ cột theo giờ, công tắc
+  bật/tắt nhắc. Nút Uống (lượng chia đều theo mục tiêu và số lần nhắc), +250 ml (một cốc); vừa bấm
+  thì có Hoàn tác trong 10 giây. Nút bánh răng trên trang: mục tiêu 1–4 L (bước 0,25 L), dung tích
+  bình, khung giờ nhắc, Reset (bấm 2 lần trong 3 giây). Pop-up nhắc có Drank / Snooze; bình gần cạn
+  thì nhắc đổ đầy (Refilled). Snooze 5 / 10 / 15 phút ở Settings › Water reminders. Lỡ một lần nhắc
+  (đang có pop-up khác, máy ngủ, chơi game) thì được nhắc bù trước lần kế tiếp. Lượng nước mỗi ngày
+  được lưu 60 ngày; widget Water hiện 7 ngày gần nhất. Vòng tiến độ ở notch: Settings › Status ring.
 - **Shelf**: kéo file vào notch, kéo ra thư mục hoặc ô chat; lịch sử clipboard.
 - **To-do**: việc có giờ, nhắc khi bắt đầu và khi hết giờ, nút "Later".
 - **Prayer**: giờ cầu nguyện trên vòng cung mặt trời, nhắc giờ, tự dừng nhạc.
