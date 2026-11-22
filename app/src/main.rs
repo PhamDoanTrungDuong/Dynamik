@@ -65,6 +65,7 @@ const BATTERY_POPUP_SECS: f32 = 4.5;
 const PRAYER_POPUP_SECS: f32 = 10.0;
 const PRAYER_EARLY_SECS: f32 = 6.0;
 const PRAYER_WINDOW: (f32, f32) = (-0.05, 2.0); // minutes around the due time
+const PRAYER_CATCHUP_MIN: f32 = 30.0; // a missed prayer reminder still shows this long after
 // The indicator (volume, Caps Lock, input language) pop-up: its hide timer is 1.4 s (timer 6, 0x14007df9e).
 const HUD_SECS: f32 = 1.4;
 // Network pop-up (sub_14000311f): a change must hold 1.5 s (timer 16), then shows for 3.2 s (timer 4).
@@ -735,15 +736,19 @@ impl App {
                         continue;
                     }
                     let at = if early { pt.saturating_sub(PRAYER_EARLY_MIN) } else { pt };
-                    // Due from 3 s before until 2 min after (0x140002345: window -0.05 .. +2.0 minutes).
+                    // Due from 3 s before (0x140002345: window -0.05 .. +2.0 minutes). One missed while
+                    // something else was up, the PC slept or a game filled the screen still shows later:
+                    // the early one until prayer time, the prayer itself for PRAYER_CATCHUP_MIN.
                     let now_f = m as f32 + self.now.second() as f32 / 60.0;
-                    if now_f >= at as f32 + PRAYER_WINDOW.0 && now_f < at as f32 + PRAYER_WINDOW.1 && self.prayer_fired.insert((today, i, early)) {
+                    let until = if early { pt as f32 } else { pt as f32 + PRAYER_CATCHUP_MIN };
+                    if now_f >= at as f32 + PRAYER_WINDOW.0 && now_f < until && self.prayer_fired.insert((today, i, early)) {
                         let body = if early { tr("In {} minutes", &[&PRAYER_EARLY_MIN]) } else { i18n::t("It's time to pray").to_string() };
                         if self.s.prayer_reminder {
                             self.notify(i18n::t(prayer::NAMES[i]), &body, Kind::Prayer(pt, early));
                         }
-                        // "Pause media at prayer time": only at the time itself, and it does not resume.
-                        if !early && self.s.prayer_pause_media {
+                        // "Pause media at prayer time": only at the time itself (not on a late catch-up),
+                        // and it does not resume.
+                        if !early && self.s.prayer_pause_media && now_f < at as f32 + PRAYER_WINDOW.1 {
                             self.media.send(media::Cmd::Pause);
                         }
                         break 'outer;
