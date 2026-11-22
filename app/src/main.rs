@@ -1803,25 +1803,31 @@ impl App {
                 for (i, path) in shelf.iter().enumerate() {
                     // 82 wide: five fit with an edge of the sixth showing, so more is plainly there.
                     let (cell, resp) = ui.allocate_exact_size(vec2(82.0, area.height()), Sense::click_and_drag());
-                    let p = ui.painter();
+                    // A file deleted or moved since it was dropped stays, faded, until it's removed.
+                    let meta = std::fs::metadata(path).ok();
+                    let mut p = ui.painter().clone();
+                    if meta.is_none() {
+                        p.multiply_opacity(0.4);
+                    }
                     let cx = cell.center().x;
                     let icon = Rect::from_center_size(pos2(cx, cell.top() + 34.0), vec2(56.0, 56.0));
-                    file_icon(p, icon, path);
+                    file_icon(&p, icon, path);
                     let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                    let g = fit_line(p, &name, bold(12.0), WHITE, 76.0);
+                    let g = fit_line(&p, &name, bold(12.0), WHITE, 76.0);
                     p.galley(pos2(cx - g.size().x / 2.0, cell.top() + 76.0 - g.size().y / 2.0), g, WHITE);
-                    let size = std::fs::metadata(path).map(|m| human_size(m.len())).unwrap_or_default();
+                    let size = meta.as_ref().map_or_else(|| t("Not there any more").to_string(), |m| human_size(m.len()));
                     p.text(pos2(cx, cell.top() + 92.0), Align2::CENTER_CENTER, size, reg(11.0), DIM);
-                    if resp.clicked() {
+                    if resp.clicked() && meta.is_some() {
                         let _ = std::process::Command::new("explorer").arg(path).spawn();
                     }
-                    if resp.drag_started() && path.exists() {
+                    if resp.drag_started() && meta.is_some() {
                         drag = Some(path.clone());
                     }
                     if resp.secondary_clicked() {
                         remove = Some(i);
                     }
-                    resp.on_hover_text(t("Click to open · drag out · right-click to remove"));
+                    let hint = if meta.is_some() { t("Click to open · drag out · right-click to remove") } else { t("Moved or deleted · right-click to remove") };
+                    resp.on_hover_text(hint);
                 }
             });
             if let Some(path) = drag {
@@ -1842,7 +1848,13 @@ impl App {
                 p.text(area.center() + vec2(0.0, 14.0), Align2::CENTER_CENTER, t("It will wait here, ready to paste again"), reg(12.0), DIM);
                 return;
             }
-            let (mut copy, mut drag) = (None, None);
+            // Clear empties the history (and what "Remember after restart" kept on disk).
+            if pill_button(ui, Rect::from_min_size(pos2(r.left() + 80.0, r.top() + 13.0), vec2(50.0, 22.0)), t("Clear"), BTN, "clear-clips") {
+                self.clips.clear();
+                self.save_clips();
+                return;
+            }
+            let (mut copy, mut drag, mut remove) = (None, None, None);
             let now = Utc::now().timestamp();
             self.scroll_zone = Some((area, false));
             let clips = self.clips.clone();
@@ -1871,8 +1883,16 @@ impl App {
                     if resp.clicked() {
                         copy = Some(text.clone());
                     }
+                    if resp.secondary_clicked() {
+                        remove = Some(i);
+                    }
+                    resp.on_hover_text(t("Click to copy · drag into a chat · right-click to remove"));
                 }
             });
+            if let Some(i) = remove {
+                self.clips.remove(i);
+                self.save_clips();
+            }
             // Above the page dots (it used to run into them).
             p.text(pos2(area.left() + 4.0, r.top() + 160.0), Align2::LEFT_CENTER, tr("{} items · click to copy · drag into a chat", &[&self.clips.len()]), reg(12.0), DIM);
             if let Some(t) = drag {
