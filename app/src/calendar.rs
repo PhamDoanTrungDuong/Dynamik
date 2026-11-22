@@ -336,6 +336,42 @@ END:VCALENDAR\r\n";
         assert!(!has("2026-12-22", "Review"));
     }
 
+    const MORE: &str = "BEGIN:VCALENDAR\r\n\
+BEGIN:VEVENT\r\nUID:gym\r\nDTSTART:20261102T060000\r\nRRULE:FREQ=DAILY;INTERVAL=3;UNTIL=20261114T235959Z\r\nSUMMARY:Gym\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:rent\r\nDTSTART;VALUE=DATE:20261015\r\nDTEND;VALUE=DATE:20261016\r\nRRULE:FREQ=MONTHLY;BYMONTHDAY=15\r\nSUMMARY:Rent\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:class\r\nDTSTART:20261103T013000Z\r\nDTEND:20261103T030000Z\r\nRRULE:FREQ=WEEKLY\r\nEXDATE:20261110T013000Z\r\nSUMMARY:Class\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:class\r\nRECURRENCE-ID:20261117T013000Z\r\nDTSTART:20261117T013000Z\r\nSTATUS:CANCELLED\r\nSUMMARY:Class\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:last\r\nDTSTART:20261130T090000\r\nRRULE:FREQ=MONTHLY;BYMONTHDAY=-1;COUNT=3\r\nSUMMARY:Month end\r\nEND:VEVENT\r\n\
+END:VCALENDAR\r\n";
+
+    #[test]
+    fn daily_interval_until_and_month_days() {
+        let items = parse(MORE);
+        let has = |day: &str, t: &str| on(&items, d(day)).iter().any(|e| e.title == t);
+        // Every third day from the 2nd, until the 14th.
+        assert!(has("2026-11-02", "Gym") && has("2026-11-05", "Gym") && has("2026-11-14", "Gym"));
+        assert!(!has("2026-11-03", "Gym") && !has("2026-11-17", "Gym"));
+        // The 15th of every month, all day.
+        assert!(has("2026-11-15", "Rent") && has("2027-02-15", "Rent") && !has("2026-11-16", "Rent"));
+        // The last day of the month, 3 times: Nov 30, Dec 31, Jan 31; not Feb 28.
+        assert!(has("2026-11-30", "Month end") && has("2026-12-31", "Month end") && has("2027-01-31", "Month end"));
+        assert!(!has("2027-02-28", "Month end"));
+    }
+
+    #[test]
+    fn utc_series_with_a_skipped_and_a_cancelled_day() {
+        let items = parse(MORE);
+        // Weekly from Tuesday 3 Nov 01:30 UTC, read on this PC's own calendar day.
+        let local = |s: &str| when(s).unwrap().0.date();
+        let titles = |day: NaiveDate| on(&items, day).into_iter().map(|e| e.title).collect::<Vec<_>>();
+        assert_eq!(titles(local("20261103T013000Z")), vec!["Class"]);
+        assert!(titles(local("20261110T013000Z")).is_empty(), "EXDATE in UTC");
+        assert!(titles(local("20261117T013000Z")).is_empty(), "a cancelled copy takes its day out");
+        assert_eq!(titles(local("20261124T013000Z")), vec!["Class"]);
+        let e = &on(&items, local("20261124T013000Z"))[0];
+        assert_eq!(e.dur, 90);
+    }
+
     /// A real Google Calendar iCal file (the public Vietnamese holidays): cargo test live -- --ignored
     #[test]
     #[ignore]
