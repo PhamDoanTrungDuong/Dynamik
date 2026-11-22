@@ -390,6 +390,12 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("Couldn't find your location", "Không tìm được vị trí", "无法找到你的位置", "Position introuvable"),
     ("Check Windows Settings › Privacy › Location, or pick a city in Settings", "Kiểm tra Cài đặt Windows › Quyền riêng tư › Vị trí, hoặc chọn thành phố trong Cài đặt", "请检查 Windows 设置 › 隐私 › 位置，或在设置中选择城市", "Vérifiez Paramètres Windows › Confidentialité › Position, ou choisissez une ville"),
     ("No location yet", "Chưa có vị trí", "还没有位置", "Pas encore de position"),
+    // The five prayers (prayer::NAMES).
+    ("Fajr", "Fajr", "晨礼", "Fajr"),
+    ("Dhuhr", "Dhuhr", "晌礼", "Dhohr"),
+    ("Asr", "Asr", "晡礼", "Asr"),
+    ("Maghrib", "Maghrib", "昏礼", "Maghrib"),
+    ("Isha", "Isha", "宵礼", "Icha"),
     ("Find it in Settings › Prayer times", "Tìm trong Cài đặt › Giờ cầu nguyện", "请在 设置 › 礼拜时间 中查找", "À trouver dans Réglages › Heures de prière"),
     ("Prayer times need to know where you are", "Giờ cầu nguyện cần biết bạn đang ở đâu", "礼拜时间需要知道你在哪里", "Les heures de prière ont besoin de votre position"),
     ("Location is off — turn it on in Windows Settings › Privacy › Location", "Vị trí đang tắt — bật trong Cài đặt Windows › Quyền riêng tư › Vị trí", "位置已关闭 — 请在 Windows 设置 › 隐私 › 位置 中开启", "La localisation est désactivée — activez-la dans Paramètres Windows › Confidentialité › Localisation"),
@@ -467,6 +473,10 @@ mod tests {
                     assert!(TABLE.iter().any(|r| r.0 == key), "{key:?} is asked for but not in the table");
                 }
             }
+        }
+        // Names looked up through a list rather than written out.
+        for key in crate::prayer::NAMES {
+            assert!(TABLE.iter().any(|r| r.0 == key), "{key:?} is asked for but not in the table");
         }
     }
 

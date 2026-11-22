@@ -740,7 +740,7 @@ impl App {
                     if now_f >= at as f32 + PRAYER_WINDOW.0 && now_f < at as f32 + PRAYER_WINDOW.1 && self.prayer_fired.insert((today, i, early)) {
                         let body = if early { tr("In {} minutes", &[&PRAYER_EARLY_MIN]) } else { i18n::t("It's time to pray").to_string() };
                         if self.s.prayer_reminder {
-                            self.notify(prayer::NAMES[i], &body, Kind::Prayer(pt, early));
+                            self.notify(i18n::t(prayer::NAMES[i]), &body, Kind::Prayer(pt, early));
                         }
                         // "Pause media at prayer time": only at the time itself, and it does not resume.
                         if !early && self.s.prayer_pause_media {
@@ -2080,8 +2080,8 @@ impl App {
         let now_f = m as f32 + self.now.second() as f32 / 60.0;
         let next = t.iter().position(|&x| x > m);
         let (name, at, label) = match next {
-            Some(i) => (prayer::NAMES[i], t[i], i18n::t("Next")),
-            None => (prayer::NAMES[0], self.prayer_times(today + Duration::days(1))[0], i18n::t("Next, tomorrow")),
+            Some(i) => (i18n::t(prayer::NAMES[i]), t[i], i18n::t("Next")),
+            None => (i18n::t(prayer::NAMES[0]), self.prayer_times(today + Duration::days(1))[0], i18n::t("Next, tomorrow")),
         };
         p.text(pos2(x, r.top() + 46.0), Align2::LEFT_CENTER, label, reg(13.0), DIM);
         p.text(pos2(x - 1.0, r.top() + 76.0), Align2::LEFT_CENTER, name, bold(32.0), WHITE);
@@ -2120,7 +2120,7 @@ impl App {
             let is_next = next == Some(i);
             let col = if is_next { WHITE } else { DIM };
             let f = if is_next { bold(11.0) } else { reg(11.0) };
-            p.text(pos2(pos.x, base + 16.0), Align2::CENTER_CENTER, prayer::NAMES[i], f.clone(), col);
+            p.text(pos2(pos.x, base + 16.0), Align2::CENTER_CENTER, i18n::t(prayer::NAMES[i]), f.clone(), col);
             p.text(pos2(pos.x, base + 30.0), Align2::CENTER_CENTER, hm(pt), reg(10.0), DIM);
         }
         if now_f >= t0 && now_f <= t1 {
@@ -2224,8 +2224,8 @@ impl App {
                     let t = self.prayer_times(today);
                     let m = self.now_min();
                     let (name, at) = match t.iter().position(|&x| x > m) {
-                        Some(i) => (prayer::NAMES[i], t[i]),
-                        None => (prayer::NAMES[0], self.prayer_times(today + Duration::days(1))[0]),
+                        Some(i) => (i18n::t(prayer::NAMES[i]), t[i]),
+                        None => (i18n::t(prayer::NAMES[0]), self.prayer_times(today + Duration::days(1))[0]),
                     };
                     p.text(pos2(r.left() + 14.0, r.top() + 56.0), Align2::LEFT_CENTER, name, bold(26.0), WHITE);
                     p.text(pos2(r.left() + 14.0, r.top() + 88.0), Align2::LEFT_CENTER, hm(at), bold(16.0), BLUE);
@@ -2533,7 +2533,7 @@ impl App {
                         ui.columns(prayer::NAMES.len(), |cols| {
                             for (i, c) in cols.iter_mut().enumerate() {
                                 c.vertical_centered(|c| {
-                                    c.label(egui::RichText::new(prayer::NAMES[i]).font(reg(12.0)).color(DIM));
+                                    c.label(egui::RichText::new(i18n::t(prayer::NAMES[i])).font(reg(12.0)).color(DIM));
                                     c.add(egui::DragValue::new(&mut s.prayer_adj[i]).range(-10..=10));
                                 });
                             }

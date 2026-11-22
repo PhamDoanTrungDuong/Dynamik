@@ -205,7 +205,9 @@ pub fn usual_method(i: usize) -> usize {
     }
 }
 
-pub const NAMES: [&str; 5] = ["Subuh", "Dzuhur", "Ashar", "Maghrib", "Isya"];
+/// The five prayers' names in English, the key i18n translates them by (the original's Indonesian
+/// Subuh, Dzuhur, Ashar, Maghrib, Isya are the same five).
+pub const NAMES: [&str; 5] = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"];
 pub const DEFAULT_CITY: usize = 17; // Jakarta, settings default `prayer_city`
 const SUNSET_ANGLE: f64 = 0.833;
 const GUESS_HOURS: [f64; 5] = [5.0, 12.0, 13.0, 18.0, 18.0];
