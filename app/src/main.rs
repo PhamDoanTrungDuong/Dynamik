@@ -512,6 +512,15 @@ impl App {
         self.save_water();
     }
 
+    /// The water reminder slots whose time has come today, as `fired` bits.
+    fn water_slots_past(&self) -> u64 {
+        let p = self.s.water_plan();
+        let now = self.now_min() as f32 + self.now.second() as f32 / 60.0;
+        (0..p.reminders.min(64))
+            .filter(|&i| now >= self.s.from as f32 + (i as f32 + 0.5) * p.interval)
+            .fold(0, |bits, i| bits | 1 << i)
+    }
+
     /// Takes the last drink back (the Undo shown for a few seconds after it).
     fn undo_drink(&mut self) {
         if let Some((ml, hour, from_bottle, _)) = self.last_drink.take() {
@@ -611,11 +620,14 @@ impl App {
                 self.water_snooze = None;
                 due = now < at as f32 + 3.0;
             }
+            // A slot missed while something else was up, the PC slept or a game filled the screen
+            // still shows, as long as the next one isn't due yet (so at most one catch-up).
+            let window = p.interval.max(2.0);
             for i in 0..p.reminders.min(64) {
                 let t = self.s.from as f32 + (i as f32 + 0.5) * p.interval;
-                if self.fired & (1 << i) == 0 && now >= t && now < t + 2.0 {
+                if self.fired & (1 << i) == 0 && now >= t {
                     self.fired |= 1 << i;
-                    due = true;
+                    due |= now < t + window;
                 }
             }
             if due {
@@ -1691,7 +1703,7 @@ impl App {
             if armed {
                 // Reset (0x140053982): today's total, the shown reminders, the hourly amounts, a full bottle.
                 self.drank = 0;
-                self.fired = 0;
+                self.fired = self.water_slots_past();
                 self.hours = [0; 24];
                 self.in_bottle = self.s.bottle;
                 self.reset_armed = None;
@@ -1703,8 +1715,9 @@ impl App {
         }
         self.in_bottle = self.in_bottle.min(self.s.bottle);
         if self.s != before {
-            // Any water setting change clears today's shown reminders (0x140053c97).
-            self.fired = 0;
+            // Any water setting change starts today's reminders over (0x140053c97), from now on:
+            // slots already past count as shown, so a change doesn't set off a catch-up at once.
+            self.fired = self.water_slots_past();
             self.save_water();
         }
     }
