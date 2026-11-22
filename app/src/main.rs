@@ -508,6 +508,11 @@ impl App {
             .find(|&(i, t)| self.fired & (1 << i) == 0 && t + 2.0 > now)
             .map(|(_, t)| t)
     }
+    /// Whether the prayer place is known: a city, or "My location" once found.
+    fn prayer_placed(&self) -> bool {
+        self.s.prayer_city != prayer::here_index() || (self.s.prayer_lat, self.s.prayer_lon) != (0.0, 0.0)
+    }
+
     /// Prayer times with the per-prayer adjustments from Settings (0x1400863af).
     fn prayer_times(&self, day: NaiveDate) -> [u32; 5] {
         let t = prayer::times_for(day, self.s.prayer_city, (self.s.prayer_lat, self.s.prayer_lon), self.s.prayer_method.checked_sub(1));
@@ -722,8 +727,7 @@ impl App {
         }
 
         // "My location" not found yet would time prayers for 0°, 0°: no reminders until it is.
-        let placed = self.s.prayer_city != prayer::here_index() || (self.s.prayer_lat, self.s.prayer_lon) != (0.0, 0.0);
-        if self.s.prayer && placed && (self.s.prayer_reminder || self.s.prayer_pause_media) && self.alert.is_none() {
+        if self.s.prayer && self.prayer_placed() && (self.s.prayer_reminder || self.s.prayer_pause_media) && self.alert.is_none() {
             let t = self.prayer_times(today);
             'outer: for (i, &pt) in t.iter().enumerate() {
                 for early in [false, true] {
@@ -2052,6 +2056,21 @@ impl App {
             }
             return;
         }
+        // "My location" without a position yet: say so (times for 0°, 0° would be wrong), and offer to look.
+        if !self.prayer_placed() {
+            let state = *self.locating.lock().unwrap();
+            let (head, line) = match state {
+                Locating::Busy => (t("Finding where you are…"), ""),
+                Locating::Failed => (t("Couldn't find your location"), t("Check Windows Settings › Privacy › Location, or pick a city in Settings")),
+                _ => (t("No location yet"), t("Prayer times need to know where you are")),
+            };
+            p.text(pos2(x, r.top() + 66.0), Align2::LEFT_CENTER, head, bold(20.0), WHITE);
+            p.text(pos2(x, r.top() + 92.0), Align2::LEFT_CENTER, line, reg(13.0), DIM);
+            if state != Locating::Busy && pill_button(ui, Rect::from_min_size(pos2(x, r.top() + 116.0), vec2(170.0, 30.0)), t("Find my location"), BLUE_DARK, "ploc") {
+                find_location(&self.locating);
+            }
+            return;
+        }
         let today = self.today();
         let city = self.city_name();
         let city = city.as_str();
@@ -2198,7 +2217,10 @@ impl App {
             }
             2 => {
                 title(t("NEXT PRAYER"));
-                if self.s.prayer {
+                if self.s.prayer && !self.prayer_placed() {
+                    p.text(pos2(r.left() + 14.0, r.top() + 60.0), Align2::LEFT_CENTER, t("No location yet"), bold(16.0), WHITE);
+                    p.text(pos2(r.left() + 14.0, r.top() + 80.0), Align2::LEFT_CENTER, t("Find it in Settings › Prayer times"), reg(12.0), DIM);
+                } else if self.s.prayer {
                     let t = self.prayer_times(today);
                     let m = self.now_min();
                     let (name, at) = match t.iter().position(|&x| x > m) {
@@ -2494,13 +2516,8 @@ impl App {
                                 _ => format!("{:.2}, {:.2}", s.prayer_lat, s.prayer_lon),
                             };
                             row(ui, "Find my location", |ui| {
-                                if move_button(ui, "⌖", t("Find my location")) && state != Locating::Busy {
-                                    *locating.lock().unwrap() = Locating::Busy;
-                                    let out = locating.clone();
-                                    std::thread::spawn(move || {
-                                        *out.lock().unwrap() = media::locate().map_or(Locating::Failed, |(a, b)| Locating::Got(a, b));
-                                        tray::wake();
-                                    });
+                                if move_button(ui, "⌖", t("Find my location")) {
+                                    find_location(&locating);
                                 }
                                 ui.add_space(8.0);
                                 ui.label(egui::RichText::new(label).font(reg(12.0)).color(DIM));
@@ -3282,6 +3299,20 @@ fn fit_line(p: &egui::Painter, text: &str, font: FontId, col: Color32, width: f3
     let mut job = egui::text::LayoutJob::simple_singleline(text.replace('\n', " "), font, col);
     job.wrap = egui::text::TextWrapping { max_width: width.max(10.0), max_rows: 1, break_anywhere: true, overflow_character: Some('…') };
     p.layout_job(job)
+}
+
+/// Asks Windows where this PC is, on its own thread (unless already asking); `update` applies it.
+fn find_location(locating: &std::sync::Arc<std::sync::Mutex<Locating>>) {
+    let mut state = locating.lock().unwrap();
+    if *state == Locating::Busy {
+        return;
+    }
+    *state = Locating::Busy;
+    let out = locating.clone();
+    std::thread::spawn(move || {
+        *out.lock().unwrap() = media::locate().map_or(Locating::Failed, |(a, b)| Locating::Got(a, b));
+        tray::wake();
+    });
 }
 
 /// A row inside `area` that scrolls sideways when its items don't fit; the mouse wheel scrolls it
