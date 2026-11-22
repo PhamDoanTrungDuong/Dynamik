@@ -330,3 +330,18 @@ of the larger "working set" is the graphics driver's shared DLLs.
 - Snooze waits water_snooze minutes (5, 10 or 15; Settings › Water reminders).
 - Goal: 1 to 4 L in 0.25 L steps (goal_step rounds a saved goal to the nearest step).
 - `--page 2 --demo` shows the Water page just after a 250 ml drink, with its Undo.
+
+## Shelf, clipboard, To-do and calendar, reworked
+- Clipboard text marked "don't keep" is never recorded: "ExcludeClipboardContentFromMonitorProcessing",
+  "Clipboard Viewer Ignore", or "CanIncludeInClipboardHistory" of 0 (as Windows' own clipboard history
+  reads them; tray::clipboard_private). A mark that can't be read counts as private.
+- Files and clipboard cards scroll sideways when they don't fit (the wheel scrolls them; no page turns
+  over them). Files are 82 wide, so an edge of the sixth shows. A file gone from its place is drawn
+  faded with "Not there any more" and only removing works. Clipboard: right-click removes one, Clear
+  empties the history (and clipboard.txt).
+- To-do: "done" counts for the day it was done; tasks come back each day. Reminders shown are kept in
+  tasks.txt per day ("done;fired=DAY:se|start|dur|title"), so a restart doesn't repeat them and the
+  next day reminds again; old lines without ";fired=" still read.
+- Calendar: also 10 minutes before (cal_early, on by default; Settings › Google Calendar). Timed
+  events from yesterday still running after midnight show today as "until HH:MM" (no reminder).
+- `--page 3 --clips` opens a screenshot on the clipboard side.
