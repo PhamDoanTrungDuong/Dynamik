@@ -352,37 +352,49 @@ pub struct Task {
     pub fired_start: bool,
     pub fired_end: bool,
     pub snooze_until: u32,
+    pub fired_day: Option<NaiveDate>, // the day fired_start / fired_end are for
 }
 
 pub fn load_tasks() -> Vec<Task> {
-    read("tasks.txt")
-        .lines()
-        .filter_map(|l| {
-            let mut p = l.splitn(4, '|');
-            let done = p.next()?;
-            let start = p.next()?;
-            let dur = p.next()?;
-            Some(Task {
-                done_day: NaiveDate::parse_from_str(done, "%Y-%m-%d").ok(),
-                start: start.parse().ok(),
-                dur: dur.parse().unwrap_or(0),
-                title: p.next()?.to_string(),
-                ..Default::default()
-            })
-        })
-        .collect()
+    read("tasks.txt").lines().filter_map(task_from).collect()
 }
 
 pub fn save_tasks(t: &[Task]) {
-    let s: Vec<String> = t
-        .iter()
-        .map(|t| {
-            let d = t.done_day.map(|d| d.to_string()).unwrap_or_else(|| "-".into());
-            let st = t.start.map(|s| s.to_string()).unwrap_or_else(|| "-".into());
-            format!("{d}|{st}|{}|{}", t.dur, t.title.replace(['\n', '|'], " "))
-        })
-        .collect();
-    write("tasks.txt", &s.join("\n"));
+    write("tasks.txt", &t.iter().map(task_line).collect::<Vec<_>>().join("\n"));
+}
+
+/// One task: "done|start|dur|title". "done" is the day it was done (or "-"), then
+/// ";fired=DAY:se" for the reminders already shown that day (s = start, e = time's up).
+fn task_line(t: &Task) -> String {
+    let mut d = t.done_day.map(|d| d.to_string()).unwrap_or_else(|| "-".into());
+    if let Some(day) = t.fired_day.filter(|_| t.fired_start || t.fired_end) {
+        d += &format!(";fired={day}:{}{}", if t.fired_start { "s" } else { "" }, if t.fired_end { "e" } else { "" });
+    }
+    let st = t.start.map(|s| s.to_string()).unwrap_or_else(|| "-".into());
+    format!("{d}|{st}|{}|{}", t.dur, t.title.replace(['\n', '|'], " "))
+}
+
+fn task_from(l: &str) -> Option<Task> {
+    let mut p = l.splitn(4, '|');
+    let first = p.next()?;
+    let (done, fired) = match first.split_once(";fired=") {
+        Some((d, f)) => (d, f.split_once(':')),
+        None => (first, None),
+    };
+    let start = p.next()?;
+    let dur = p.next()?;
+    let day = |s: &str| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok();
+    let which = fired.map_or("", |f| f.1);
+    Some(Task {
+        done_day: day(done),
+        start: start.parse().ok(),
+        dur: dur.parse().unwrap_or(0),
+        title: p.next()?.to_string(),
+        fired_day: fired.and_then(|f| day(f.0)),
+        fired_start: which.contains('s'),
+        fired_end: which.contains('e'),
+        ..Default::default()
+    })
 }
 
 /// Clipboard entries are stored one per line with backslashes and newlines escaped.
@@ -436,6 +448,19 @@ mod tests {
         let s = "a\\b\nc|d";
         assert_eq!(unesc(&esc(s)), s);
     }
+    #[test]
+    fn task_lines_keep_the_day_s_reminders() {
+        let day = NaiveDate::from_ymd_opt(2026, 11, 22).unwrap();
+        let t = Task { title: "Họp nhóm".into(), start: Some(540), dur: 30, done_day: None, fired_start: true, fired_day: Some(day), ..Default::default() };
+        let line = task_line(&t);
+        assert_eq!(line, "-;fired=2026-11-22:s|540|30|Họp nhóm");
+        let back = task_from(&line).unwrap();
+        assert_eq!((back.fired_day, back.fired_start, back.fired_end, back.title.as_str()), (Some(day), true, false, "Họp nhóm"));
+        // A line from before reminders were kept still reads.
+        let old = task_from("2026-11-21|600|0|Đọc sách").unwrap();
+        assert_eq!((old.done_day, old.start, old.fired_day), (NaiveDate::from_ymd_opt(2026, 11, 21), Some(600), None));
+    }
+
     #[test]
     fn water_goal_steps() {
         assert_eq!(goal_step(1500), 1500);

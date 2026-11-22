@@ -670,10 +670,14 @@ impl App {
             }
         }
 
+        // Tasks come back every day: yesterday's reminders and "Later" don't carry over.
+        for task in self.tasks.iter_mut().filter(|t| t.fired_day != Some(today)) {
+            (task.fired_start, task.fired_end, task.snooze_until, task.fired_day) = (false, false, 0, Some(today));
+        }
         if self.alert.is_none() {
             let hit = self.tasks.iter().enumerate().find_map(|(i, t)| {
                 let st = t.start? as u32;
-                if t.done_day.is_some() || m < t.snooze_until {
+                if t.done_day == Some(today) || m < t.snooze_until {
                     return None;
                 }
                 if self.s.todo_start && !t.fired_start && m >= st && m < st + 60 {
@@ -690,6 +694,8 @@ impl App {
                     self.tasks[i].fired_end = true;
                     self.notify(t("Time's Up!"), &title, Kind::TaskEnd(i));
                 }
+                // Kept, so opening the app again doesn't remind of the same thing twice.
+                data::save_tasks(&self.tasks);
             }
         }
 
@@ -1959,7 +1965,7 @@ impl App {
                 }
                 for (i, t) in self.tasks.iter().enumerate() {
                     let (row, resp) = ui.allocate_exact_size(vec2(list.width() - 12.0, 34.0), Sense::click());
-                    let is_done = t.done_day.is_some();
+                    let is_done = t.done_day == Some(today); // done counts for the day it was done
                     let fill = if is_done { GREEN_DARK } else if resp.hovered() { Color32::from_gray(32) } else { CARD };
                     let pp = ui.painter();
                     pp.rect_filled(row.shrink2(vec2(0.0, 3.0)), 9.0, fill);
@@ -1991,7 +1997,7 @@ impl App {
         });
         if let Some(i) = toggle_i {
             let t = &mut self.tasks[i];
-            t.done_day = if t.done_day.is_some() { None } else { Some(today) };
+            t.done_day = if t.done_day == Some(today) { None } else { Some(today) };
             data::save_tasks(&self.tasks);
         }
         if let Some(i) = remove {
@@ -2132,10 +2138,10 @@ impl App {
                     }
                     p.text(pos2(cx, r.top() + 58.0), Align2::CENTER_CENTER, d.day().to_string(), bold(13.0), col);
                 }
-                let open = self.tasks.iter().filter(|t| t.done_day.is_none()).count();
+                let open = self.tasks.iter().filter(|t| t.done_day != Some(today)).count();
                 p.circle_filled(pos2(r.left() + 18.0, r.top() + 95.0), 4.0, GREEN);
                 p.text(pos2(r.left() + 28.0, r.top() + 95.0), Align2::LEFT_CENTER, tr("{} tasks today", &[&open]), bold(12.0), WHITE);
-                let next = self.tasks.iter().filter(|t| t.done_day.is_none() && t.start.is_some_and(|s| s as u32 >= self.now_min())).min_by_key(|t| t.start);
+                let next = self.tasks.iter().filter(|t| t.done_day != Some(today) && t.start.is_some_and(|s| s as u32 >= self.now_min())).min_by_key(|t| t.start);
                 let line = next.map(|task| tr("Next: {}, {}", &[&ellipsize(&task.title, 16), &hm(task.start.unwrap() as u32)])).unwrap_or_else(|| t("Nothing scheduled").into());
                 p.text(pos2(r.left() + 28.0, r.top() + 111.0), Align2::LEFT_CENTER, line, reg(11.0), DIM);
             }
