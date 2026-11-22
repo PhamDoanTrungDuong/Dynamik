@@ -317,3 +317,16 @@ of the larger "working set" is the graphics driver's shared DLLs.
 - Space starts / pauses on the Pomodoro page when nothing is being typed.
 - A gap of more than 5 s between looks while running means the PC slept: Pomodoro pauses, the gap
   counts for nothing, and a pop-up says so.
+
+## Water, reworked
+- Drink adds the plan's share (goal / reminders); "+250 ml" adds a glass (GLASS_ML). Each drink is
+  remembered (ml, hour, ml from the bottle) and the status line offers Undo for 10 s.
+- Catch-up: a slot not shown at its time (another pop-up up, the PC asleep, a full-screen game)
+  shows later as long as the next slot isn't due yet, so at most one catch-up. A settings change or
+  Reset counts the slots already past as shown, so neither sets off a reminder at once.
+- History: water_log.txt, one "YYYY-MM-DD ml" line a day, the last 60 days, today's as it stands;
+  water.txt from an earlier day adds that day's total at start. The Water widget shows 7 days
+  against the goal.
+- Snooze waits water_snooze minutes (5, 10 or 15; Settings › Water reminders).
+- Goal: 1 to 4 L in 0.25 L steps (goal_step rounds a saved goal to the nearest step).
+- `--page 2 --demo` shows the Water page just after a 250 ml drink, with its Undo.
