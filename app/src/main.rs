@@ -90,6 +90,7 @@ const RECENT_MAX: usize = 20;
 const BLINK_EVERY_MS: i64 = 4200;
 const BLINK_MS: i64 = 180;
 const LONG_BREAK_EVERY: u32 = 4;
+const UNDO_SECS: f32 = 10.0; // how long the Water page offers to take a drink back
 const SLEEP_GAP_SECS: f64 = 5.0; // a gap this long between looks while Pomodoro runs = the PC slept
 const RESET_CONFIRM_SECS: f32 = 3.0;
 const MOON: [&str; 8] = ["New Moon", "Waxing Crescent", "First Quarter", "Waxing Gibbous", "Full Moon", "Waning Gibbous", "Last Quarter", "Waning Crescent"];
@@ -268,6 +269,7 @@ struct App {
     water_snooze: Option<u32>,
     water_settings: bool,
     reset_armed: Option<Instant>,
+    last_drink: Option<(u32, usize, u32, Instant)>, // (ml, hour, ml taken from the bottle, when) for Undo
     // focus
     mode: Mode,
     left: f64,
@@ -408,6 +410,8 @@ impl App {
             w: Spring { x: start.x, v: 0.0 }, h: Spring { x: start.y, v: 0.0 }, content: Spring { x: 0.0, v: 0.0 }, spring: SPRING, last_target: start,
             tasks: load_tasks(), form: None, todo_edit: false,
             water_day, drank, in_bottle, hours, fired, water_snooze: None, water_settings: false, reset_armed: None,
+            // --page 2 --demo shows the Water page just after a 250 ml drink (with its Undo).
+            last_drink: (!live && page == 2 && std::env::args().any(|a| a == "--demo")).then(|| (250, now.hour() as usize, 0, Instant::now())),
             mode: Mode::Focus, left, running: false, rounds: 0, rounds_day: now.date(), held_notice: None, focus_log, focus_acc: 0.0, last_tick: Instant::now(),
             shelf, shelf_view: ShelfView::Files, clips, clipboard, last_clip, copied: None,
             battery: battery(), prayer_fired: HashSet::new(), hidden: false, media: demo_music(media::Media::start(s.lyrics, live), !live && page == 0), lyrics_open: false, volume: media::volume_watch(), last_volume: None, last_caps: caps_lock(), last_lang: input_lang(), network: media::network_watch(), last_network: None,
@@ -494,10 +498,28 @@ impl App {
 
     fn drink(&mut self) {
         let each = self.s.water_plan().each;
-        self.drank += each;
-        self.hours[self.now.hour() as usize] += each;
-        self.in_bottle = self.in_bottle.saturating_sub(each);
+        self.drink_ml(each);
+    }
+
+    /// Counts `ml` as drunk now, and remembers it for Undo.
+    fn drink_ml(&mut self, ml: u32) {
+        let hour = self.now.hour() as usize;
+        let from_bottle = self.in_bottle.min(ml);
+        self.drank += ml;
+        self.hours[hour] += ml;
+        self.in_bottle -= from_bottle;
+        self.last_drink = Some((ml, hour, from_bottle, Instant::now()));
         self.save_water();
+    }
+
+    /// Takes the last drink back (the Undo shown for a few seconds after it).
+    fn undo_drink(&mut self) {
+        if let Some((ml, hour, from_bottle, _)) = self.last_drink.take() {
+            self.drank = self.drank.saturating_sub(ml);
+            self.hours[hour] = self.hours[hour].saturating_sub(ml);
+            self.in_bottle = (self.in_bottle + from_bottle).min(self.s.bottle);
+            self.save_water();
+        }
     }
 
     /// Moves Pomodoro on to its next part: a break after focus (the long one every 4th round),
@@ -576,6 +598,7 @@ impl App {
             self.drank = 0;
             self.fired = 0;
             self.hours = [0; 24];
+            self.last_drink = None;
             self.save_water();
         }
         // Water reminders as the original schedules them (0x140001fe5): slot i is due at
@@ -1550,13 +1573,28 @@ impl App {
         } else {
             self.next_water_slot().map(|at| tr("next {}", &[&hm(at.ceil() as u32)])).unwrap_or_else(|| t("of your goal").into())
         };
-        let a = p.layout_no_wrap(t("Today · ").into(), reg(14.0), DIM);
-        let b = p.layout_no_wrap(format!("{pct}%"), bold(14.0), BLUE);
-        let (aw, bwid) = (a.size().x, b.size().x);
         let ty = r.top() + 98.0;
-        p.galley(pos2(x, ty - a.size().y / 2.0), a, DIM);
-        p.galley(pos2(x + aw, ty - b.size().y / 2.0), b, BLUE);
-        p.text(pos2(x + aw + bwid, ty), Align2::LEFT_CENTER, format!(" · {status}"), reg(14.0), DIM);
+        // Just after a drink, the line offers to take it back instead.
+        let undo = self.last_drink.filter(|d| d.3.elapsed().as_secs_f32() < UNDO_SECS);
+        if let Some((ml, ..)) = undo {
+            let said = p.layout_no_wrap(tr("Drank {} ml · ", &[&ml]), reg(14.0), DIM);
+            let sw = said.size().x;
+            p.galley(pos2(x, ty - said.size().y / 2.0), said, DIM);
+            let link = Rect::from_min_size(pos2(x + sw, ty - 10.0), vec2(60.0, 20.0));
+            let resp = ui.interact(link, ui.id().with("undo"), Sense::click());
+            resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, t("Undo")));
+            p.text(pos2(x + sw, ty), Align2::LEFT_CENTER, t("Undo"), bold(14.0), if resp.hovered() { WHITE } else { BLUE });
+            if resp.clicked() {
+                self.undo_drink();
+            }
+        } else {
+            let a = p.layout_no_wrap(t("Today · ").into(), reg(14.0), DIM);
+            let b = p.layout_no_wrap(format!("{pct}%"), bold(14.0), BLUE);
+            let (aw, bwid) = (a.size().x, b.size().x);
+            p.galley(pos2(x, ty - a.size().y / 2.0), a, DIM);
+            p.galley(pos2(x + aw, ty - b.size().y / 2.0), b, BLUE);
+            p.text(pos2(x + aw + bwid, ty), Align2::LEFT_CENTER, format!(" · {status}"), reg(14.0), DIM);
+        }
         gradient_bar(&p, Rect::from_min_size(pos2(x, r.top() + 112.0), vec2(196.0, 6.0)), self.drank as f32 / self.s.goal.max(1) as f32, Color32::from_rgb(56, 189, 248), BLUE);
         let each = self.s.water_plan().each;
         if pill_button(ui, Rect::from_min_size(pos2(x, r.top() + 132.0), vec2(86.0, 32.0)), t("Drink"), BLUE_DARK, "drink") {
@@ -1653,6 +1691,7 @@ impl App {
                 self.hours = [0; 24];
                 self.in_bottle = self.s.bottle;
                 self.reset_armed = None;
+                self.last_drink = None;
                 self.save_water();
             } else {
                 self.reset_armed = Some(Instant::now());
