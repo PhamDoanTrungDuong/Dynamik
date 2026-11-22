@@ -90,6 +90,7 @@ const RECENT_MAX: usize = 20;
 const BLINK_EVERY_MS: i64 = 4200;
 const BLINK_MS: i64 = 180;
 const LONG_BREAK_EVERY: u32 = 4;
+const WATER_LOG_DAYS: usize = 60; // days of water history kept
 const UNDO_SECS: f32 = 10.0; // how long the Water page offers to take a drink back
 const SLEEP_GAP_SECS: f64 = 5.0; // a gap this long between looks while Pomodoro runs = the PC slept
 const RESET_CONFIRM_SECS: f32 = 3.0;
@@ -270,6 +271,7 @@ struct App {
     water_settings: bool,
     reset_armed: Option<Instant>,
     last_drink: Option<(u32, usize, u32, Instant)>, // (ml, hour, ml taken from the bottle, when) for Undo
+    water_log: BTreeMap<NaiveDate, u32>, // ml drunk on earlier days (water_log.txt)
     // focus
     mode: Mode,
     left: f64,
@@ -356,6 +358,15 @@ impl App {
             }
         }
         let in_bottle = (num("inb").unwrap_or(s.bottle as u64) as u32).min(s.bottle);
+        let mut water_log: BTreeMap<NaiveDate, u32> = read("water_log.txt")
+            .lines()
+            .filter_map(|l| l.split_once(' ').and_then(|(d, ml)| Some((d.parse().ok()?, ml.trim().parse().ok()?))))
+            .collect();
+        // water.txt from an earlier day: that day's total joins the history, and today starts here.
+        if !same_day {
+            water_log.insert(water_day, num("taken").unwrap_or(0) as u32);
+        }
+        let water_day = if same_day { water_day } else { now.date() };
         let focus_log = read("focus.txt")
             .lines()
             .filter_map(|l| l.split_once(' ').and_then(|(d, m)| Some((d.parse().ok()?, m.parse().ok()?))))
@@ -411,6 +422,7 @@ impl App {
             tasks: load_tasks(), form: None, todo_edit: false,
             water_day, drank, in_bottle, hours, fired, water_snooze: None, water_settings: false, reset_armed: None,
             // --page 2 --demo shows the Water page just after a 250 ml drink (with its Undo).
+            water_log,
             last_drink: (!live && page == 2 && std::env::args().any(|a| a == "--demo")).then(|| (250, now.hour() as usize, 0, Instant::now())),
             mode: Mode::Focus, left, running: false, rounds: 0, rounds_day: now.date(), held_notice: None, focus_log, focus_acc: 0.0, last_tick: Instant::now(),
             shelf, shelf_view: ShelfView::Files, clips, clipboard, last_clip, copied: None,
@@ -465,6 +477,11 @@ impl App {
             s.bottle, s.goal, s.from, s.until, self.water_day, self.drank, self.in_bottle, self.fired, hours, s.water as u8
         );
         write("water.txt", &text);
+        // One line a day ("2026-11-22 1250"), the last 60 days, today's as it stands.
+        let mut log = self.water_log.clone();
+        log.insert(self.water_day, self.drank);
+        let keep = log.len().saturating_sub(WATER_LOG_DAYS);
+        write("water_log.txt", &log.iter().skip(keep).map(|(d, ml)| format!("{d} {ml}")).collect::<Vec<_>>().join("\n"));
     }
     fn save_shelf(&self) {
         write("shelf.txt", &self.shelf.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join("\n"));
@@ -510,6 +527,15 @@ impl App {
         self.in_bottle -= from_bottle;
         self.last_drink = Some((ml, hour, from_bottle, Instant::now()));
         self.save_water();
+    }
+
+    /// Millilitres drunk on each of the last 7 days, oldest first; today's is the live count.
+    fn water_week(&self) -> [u32; 7] {
+        let today = self.today();
+        std::array::from_fn(|k| {
+            let day = today - Duration::days(6 - k as i64);
+            if day == today { self.drank } else { self.water_log.get(&day).copied().unwrap_or(0) }
+        })
     }
 
     /// The water reminder slots whose time has come today, as `fired` bits.
@@ -603,6 +629,8 @@ impl App {
         }
 
         if self.water_day != today {
+            // The day that ended goes into the history before today starts from 0.
+            self.water_log.insert(self.water_day, self.drank);
             self.water_day = today;
             self.drank = 0;
             self.fired = 0;
@@ -2175,6 +2203,14 @@ impl App {
                 drop_icon(p, c, 10.0, BLUE);
                 p.text(pos2(r.left() + 92.0, r.top() + 60.0), Align2::LEFT_CENTER, format!("{:.1} L", self.drank as f32 / 1000.0), bold(22.0), WHITE);
                 p.text(pos2(r.left() + 92.0, r.top() + 84.0), Align2::LEFT_CENTER, tr("of {} L", &[&format!("{:.1}", self.s.goal as f32 / 1000.0)]), reg(12.0), DIM);
+                // The last 7 days against the goal (a full bar = goal reached); today in blue.
+                for (k, ml) in self.water_week().iter().enumerate() {
+                    let h = 14.0 * (*ml as f32 / self.s.goal.max(1) as f32).min(1.0);
+                    let x = r.left() + 92.0 + k as f32 * 13.0;
+                    let base = r.top() + 112.0;
+                    p.rect_filled(Rect::from_min_max(pos2(x, base - 14.0), pos2(x + 8.0, base)), 2.0, Color32::from_gray(38));
+                    p.rect_filled(Rect::from_min_max(pos2(x, base - h.max(1.5)), pos2(x + 8.0, base)), 2.0, if k == 6 { BLUE } else { Color32::from_rgb(52, 98, 160) });
+                }
             }
         }
     }
