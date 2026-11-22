@@ -139,6 +139,7 @@ pub struct Settings {
     pub welcomed: bool, // the first-start hint has been shown
     pub cal_early: bool, // calendar events also remind 10 minutes before
     pub prayer_asr: usize, // Ashar: 0 as the method does, 1 Shafi'i, 2 Hanafi
+    pub prayer_resume_media: bool, // music paused at prayer time plays again 10 minutes later
     pub auto_next: bool, // Pomodoro: the next part starts by itself
     pub focus_quiet: bool, // notifications wait while focusing
     pub lyrics: bool,
@@ -232,6 +233,7 @@ impl Settings {
             welcomed: get(&m, "welcomed", false),
             cal_early: get(&m, "cal_early", true),
             prayer_asr: Some(get(&m, "prayer_asr", 0usize)).filter(|&a| a <= 2).unwrap_or(0),
+            prayer_resume_media: get(&m, "prayer_resume_media", false),
             auto_next: get(&m, "auto_next", false),
             focus_quiet: get(&m, "focus_quiet", false),
             lyrics: get(&m, "lyrics", true),
@@ -301,6 +303,7 @@ impl Settings {
             format!("welcomed={}", s.welcomed),
             format!("cal_early={}", s.cal_early),
             format!("prayer_asr={}", s.prayer_asr),
+            format!("prayer_resume_media={}", s.prayer_resume_media),
             format!("auto_next={}", s.auto_next),
             format!("focus_quiet={}", s.focus_quiet),
             format!("lyrics={}", s.lyrics),

@@ -65,7 +65,7 @@ impl Now {
     }
 }
 
-pub enum Cmd { Toggle, Next, Prev, Pause, Seek(f64), NextPlayer }
+pub enum Cmd { Toggle, Next, Prev, Pause, Play, Seek(f64), NextPlayer }
 
 const ART_TRIES: u32 = 4; // more reads of a song's cover while the player hasn't sent it yet
 
@@ -158,6 +158,7 @@ impl Media {
                             Cmd::Next => session.TrySkipNextAsync().and_then(|o| o.get()),
                             Cmd::Prev => session.TrySkipPreviousAsync().and_then(|o| o.get()),
                             Cmd::Pause => session.TryPauseAsync().and_then(|o| o.get()),
+                            Cmd::Play => session.TryPlayAsync().and_then(|o| o.get()),
                             // The position is in 100 ns ticks.
                             Cmd::Seek(s) => session.TryChangePlaybackPositionAsync((s * 1e7) as i64).and_then(|o| o.get()),
                             Cmd::NextPlayer => Ok(true), // done above, before choosing the session

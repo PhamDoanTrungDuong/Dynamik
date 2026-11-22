@@ -67,6 +67,7 @@ const PRAYER_EARLY_SECS: f32 = 6.0;
 const PRAYER_WINDOW: (f32, f32) = (-0.05, 2.0); // minutes around the due time
 const PRAYER_CATCHUP_MIN: f32 = 30.0; // a missed prayer reminder still shows this long after
 const PRAYER_LABEL_GAP: f32 = 42.0; // the day arc's labels stay this far apart (points)
+const PRAYER_RESUME_MIN: u64 = 10; // music paused at prayer time plays again this long after (if asked)
 const IMSAK_BEFORE_MIN: u32 = 10; // Imsak, as Indonesia keeps it: 10 minutes before Subuh/Fajr
 // The indicator (volume, Caps Lock, input language) pop-up: its hide timer is 1.4 s (timer 6, 0x14007df9e).
 const HUD_SECS: f32 = 1.4;
@@ -283,6 +284,7 @@ struct App {
     rounds: u32,
     focus_log: BTreeMap<NaiveDate, u32>,
     rounds_day: NaiveDate, // the day `rounds` counts for
+    prayer_paused: Option<Instant>, // when music was paused for prayer (for "Play again after")
     held_notice: Option<(media::Notice, u32)>, // a notification kept back during quiet focus, and how many more
     focus_acc: f64,
     last_tick: Instant,
@@ -428,7 +430,7 @@ impl App {
             // --page 2 --demo shows the Water page just after a 250 ml drink (with its Undo).
             water_log,
             last_drink: (!live && page == 2 && std::env::args().any(|a| a == "--demo")).then(|| (250, now.hour() as usize, 0, Instant::now())),
-            mode: Mode::Focus, left, running: false, rounds: 0, rounds_day: now.date(), held_notice: None, focus_log, focus_acc: 0.0, last_tick: Instant::now(),
+            mode: Mode::Focus, left, running: false, rounds: 0, rounds_day: now.date(), prayer_paused: None, held_notice: None, focus_log, focus_acc: 0.0, last_tick: Instant::now(),
             // --clips: a screenshot of the clipboard side.
             shelf, shelf_view: if !live && std::env::args().any(|a| a == "--clips") { ShelfView::Clipboard } else { ShelfView::Files },
             clips, clipboard, last_clip, copied: None,
@@ -752,11 +754,27 @@ impl App {
                         // "Pause media at prayer time": only at the time itself (not on a late catch-up),
                         // and it does not resume.
                         if !early && self.s.prayer_pause_media && now_f < at as f32 + PRAYER_WINDOW.1 {
+                            // Remembered only when something was playing, for "Play again after".
+                            if self.media.now.lock().is_ok_and(|n| n.playing) {
+                                self.prayer_paused = Some(Instant::now());
+                            }
                             self.media.send(media::Cmd::Pause);
                         }
                         break 'outer;
                     }
                 }
+            }
+        }
+
+        // Music paused at prayer time plays again later, if asked; not if someone played it meanwhile.
+        if let Some(at) = self.prayer_paused {
+            // A few seconds' grace: the player takes a moment to report the pause itself.
+            let playing = at.elapsed().as_secs() > 5 && self.media.now.lock().is_ok_and(|n| n.playing);
+            if playing || !self.s.prayer_resume_media {
+                self.prayer_paused = None;
+            } else if at.elapsed().as_secs() >= PRAYER_RESUME_MIN * 60 {
+                self.prayer_paused = None;
+                self.media.send(media::Cmd::Play);
             }
         }
 
@@ -2548,6 +2566,7 @@ impl App {
                         switch_row(ui, "Remind me at prayer time", &mut s.prayer_reminder);
                         ui.add_enabled_ui(s.prayer_reminder, |ui| switch_row(ui, "Also 10 minutes before", &mut s.prayer_early));
                         switch_row(ui, "Pause media at prayer time", &mut s.prayer_pause_media);
+                        ui.add_enabled_ui(s.prayer_pause_media, |ui| switch_row(ui, "Play it again 10 minutes later", &mut s.prayer_resume_media));
                         row_label(ui, "Adjust — minutes added to each time", 40.0);
                         ui.columns(prayer::NAMES.len(), |cols| {
                             for (i, c) in cols.iter_mut().enumerate() {
