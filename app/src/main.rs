@@ -744,7 +744,8 @@ impl App {
                 if let Some(t) = self.clipboard.as_mut().and_then(|c| c.get_text().ok()) {
                     if t != self.last_clip {
                         self.last_clip = t.clone();
-                        if !t.trim().is_empty() {
+                        // Passwords and other text marked "don't keep" never go into the history.
+                        if !t.trim().is_empty() && !tray::clipboard_private() {
                             self.clips.retain(|c| c.1 != t);
                             self.clips.insert(0, (Utc::now().timestamp(), t));
                             self.clips.truncate(self.s.clipboard_max);

@@ -50,6 +50,44 @@ pub const TAKEN_OCR: u8 = 2;
 const NOT_YET: u8 = u8::MAX;
 static TAKEN: AtomicU8 = AtomicU8::new(NOT_YET);
 
+/// Whether what is on the clipboard asks not to be kept in a history: password managers (and
+/// Windows' own clipboard history rules) mark secrets with "ExcludeClipboardContentFromMonitorProcessing"
+/// or a "CanIncludeInClipboardHistory" of 0. When the mark can't be read, the text is treated as private.
+pub fn clipboard_private() -> bool {
+    use windows_sys::Win32::System::{
+        DataExchange::{CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard, RegisterClipboardFormatW},
+        Memory::{GlobalLock, GlobalSize, GlobalUnlock},
+    };
+    unsafe {
+        let format = |name: &str| RegisterClipboardFormatW(wide(name).as_ptr());
+        if IsClipboardFormatAvailable(format("ExcludeClipboardContentFromMonitorProcessing")) != 0 || IsClipboardFormatAvailable(format("Clipboard Viewer Ignore")) != 0 {
+            return true;
+        }
+        let history = format("CanIncludeInClipboardHistory");
+        if IsClipboardFormatAvailable(history) == 0 {
+            return false;
+        }
+        // Another app may hold the clipboard for a moment: a few tries.
+        for _ in 0..3 {
+            if OpenClipboard(null_mut()) != 0 {
+                let h = GetClipboardData(history);
+                let mut allowed = None;
+                if !h.is_null() {
+                    let p = GlobalLock(h) as *const u32;
+                    if !p.is_null() && GlobalSize(h) >= 4 {
+                        allowed = Some(p.read_unaligned() != 0);
+                    }
+                    GlobalUnlock(h);
+                }
+                CloseClipboard();
+                return allowed != Some(true);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(15));
+        }
+        true
+    }
+}
+
 /// The shortcuts that couldn't be registered, once registering has been tried.
 pub fn hotkeys_taken() -> Option<u8> {
     let t = TAKEN.load(Ordering::Relaxed);
