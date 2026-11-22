@@ -1597,11 +1597,15 @@ impl App {
         }
         gradient_bar(&p, Rect::from_min_size(pos2(x, r.top() + 112.0), vec2(196.0, 6.0)), self.drank as f32 / self.s.goal.max(1) as f32, Color32::from_rgb(56, 189, 248), BLUE);
         let each = self.s.water_plan().each;
-        if pill_button(ui, Rect::from_min_size(pos2(x, r.top() + 132.0), vec2(86.0, 32.0)), t("Drink"), BLUE_DARK, "drink") {
+        // Drink: the planned sip; +250 ml: a glass; the gear opens the water settings.
+        if pill_button(ui, Rect::from_min_size(pos2(x, r.top() + 132.0), vec2(80.0, 32.0)), t("Drink"), BLUE_DARK, "drink") {
             self.drink();
         }
+        if pill_button(ui, Rect::from_min_size(pos2(x + 84.0, r.top() + 132.0), vec2(80.0, 32.0)), &format!("+{GLASS_ML} ml"), BTN, "glass") {
+            self.drink_ml(GLASS_ML);
+        }
         let set_label = if self.water_settings { t("Done") } else { t("Settings") };
-        if pill_button(ui, Rect::from_min_size(pos2(x + 90.0, r.top() + 132.0), vec2(104.0, 32.0)), set_label, BTN, "wset") {
+        if gear_button(ui, pos2(x + 186.0, r.top() + 148.0), self.water_settings, set_label) {
             self.water_settings = !self.water_settings;
         }
         p.line_segment([pos2(r.left() + 272.0, r.top() + 44.0), pos2(r.left() + 272.0, r.top() + 166.0)], Stroke::new(1.0_f32, Color32::from_gray(40)));
@@ -2973,6 +2977,27 @@ fn circle_button(ui: &mut egui::Ui, c: Pos2, rad: f32, fill: Color32, dir: &str)
     let st = Stroke::new(2.0_f32, WHITE);
     p.line_segment([c + vec2(-2.5 * s, -4.5), c + vec2(2.5 * s, 0.0)], st);
     p.line_segment([c + vec2(2.5 * s, 0.0), c + vec2(-2.5 * s, 4.5)], st);
+    resp.clicked()
+}
+
+/// A round button with a gear (or a tick while what it opens is open); `name` is its tooltip and
+/// what screen readers say.
+fn gear_button(ui: &mut egui::Ui, c: Pos2, open: bool, name: &str) -> bool {
+    let resp = ui.interact(Rect::from_center_size(c, vec2(32.0, 32.0)), ui.id().with("gear"), Sense::click()).on_hover_text(name);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name));
+    let p = ui.painter();
+    p.circle_filled(c, 16.0, if resp.hovered() { Color32::from_gray(60) } else { BTN });
+    let st = Stroke::new(1.8_f32, WHITE);
+    if open {
+        p.add(Shape::line(vec![c + vec2(-5.0, 0.5), c + vec2(-1.5, 4.0), c + vec2(5.5, -4.0)], st));
+    } else {
+        for k in 0..8 {
+            let a = k as f32 * PI / 4.0;
+            let d = vec2(a.cos(), a.sin());
+            p.line_segment([c + d * 5.5, c + d * 8.0], Stroke::new(2.6_f32, WHITE));
+        }
+        p.circle_stroke(c, 5.0, st);
+    }
     resp.clicked()
 }
 

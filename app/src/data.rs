@@ -13,6 +13,7 @@ pub const FROM_MAX: u16 = 1380;
 pub const UNTIL_MAX: u16 = 1440;
 pub const MIN_SPAN: u16 = 60;
 pub const GOALS: [u32; 4] = [1500, 2000, 2500, 3000];
+pub const GLASS_ML: u32 = 250; // the Water page's "+250 ml": an ordinary glass
 pub const CLIP_MAX_FREE: usize = 5;
 pub const SNOOZES: [u32; 3] = [5, 10, 15];
 pub const PRAYER_EARLY_MIN: u32 = 10;
