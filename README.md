@@ -48,8 +48,20 @@ hiện trạng thái và mở ra thành bảng công cụ nhỏ.*
   thì nhắc đổ đầy (Refilled). Snooze 5 / 10 / 15 phút ở Settings › Water reminders. Lỡ một lần nhắc
   (đang có pop-up khác, máy ngủ, chơi game) thì được nhắc bù trước lần kế tiếp. Lượng nước mỗi ngày
   được lưu 60 ngày; widget Water hiện 7 ngày gần nhất. Vòng tiến độ ở notch: Settings › Status ring.
-- **Shelf**: kéo file vào notch, kéo ra thư mục hoặc ô chat; lịch sử clipboard.
-- **To-do**: việc có giờ, nhắc khi bắt đầu và khi hết giờ, nút "Later".
+- **Shelf**: kéo file vào bất kỳ đâu trên notch; click để mở, kéo ra thư mục hoặc ô chat, click phải
+  để gỡ, Clear xóa hết; nhiều file thì cuộn ngang. File đã bị chuyển hoặc xóa hiện mờ. Shelf được giữ
+  qua lần mở sau (trừ khi bật "Start with an empty Shelf").
+- **Clipboard** (nút chuyển ở góc Shelf): lịch sử chữ đã copy, giữ 1–5 mục; click để copy lại, kéo vào
+  ô chat, click phải để xóa một mục, Clear xóa hết. Mật khẩu và nội dung được đánh dấu "không lưu lịch
+  sử" (từ trình quản lý mật khẩu) không bao giờ được lưu. Bật/tắt và "Remember after restart" ở
+  Settings › Shelf.
+- **To-do**: việc có giờ (HH:MM, để trống nếu không có giờ) và thời lượng; click để đánh dấu xong
+  (tính trong ngày, sang ngày mới việc mở lại); "Edit Task" để sửa hoặc xóa. Nhắc khi bắt đầu và khi
+  hết giờ, mỗi ngày một lần, nút "Later" (5/10/15 phút, Settings › To-do reminders).
+- **Google Lịch**: dán "Secret address in iCal format" của lịch vào Settings › Google Calendar (được
+  mã hóa, chỉ lưu trên máy). Sự kiện hôm nay hiện đầu To-do (chỉ đọc), nhắc trước 10 phút (tắt được)
+  và lúc bắt đầu; có sự kiện lặp lại, ngày bị bỏ, buổi bị dời hoặc hủy, sự kiện qua đêm. Đọc lại 15 phút
+  một lần.
 - **Prayer**: giờ cầu nguyện trên vòng cung mặt trời, nhắc giờ, tự dừng nhạc.
 - **Widgets**: 2 widget một lúc — tuần, pin, giờ cầu nguyện, focus, giờ thế giới, mặt trăng, đếm ngược,
   nước, thời tiết.
