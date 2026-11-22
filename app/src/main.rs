@@ -1635,7 +1635,7 @@ impl App {
         if small_step(ui, pos2(lx + 50.0, y2), "-", "f-") { from = from.saturating_sub(HOURS_STEP); }
         p.text(pos2(lx + 82.0, y2), Align2::CENTER_CENTER, hm(from as u32), bold(13.0), WHITE);
         if small_step(ui, pos2(lx + 114.0, y2), "+", "f+") { from = (from + HOURS_STEP).min(FROM_MAX); }
-        p.text(pos2(lx + 132.0, y2), Align2::CENTER_CENTER, "to", reg(12.0), DIM);
+        p.text(pos2(lx + 132.0, y2), Align2::CENTER_CENTER, t("to"), reg(12.0), DIM);
         if small_step(ui, pos2(lx + 150.0, y2), "-", "u-") { until = until.saturating_sub(HOURS_STEP); }
         p.text(pos2(lx + 182.0, y2), Align2::CENTER_CENTER, hm(until as u32), bold(13.0), WHITE);
         if small_step(ui, pos2(lx + 214.0, y2), "+", "u+") { until = (until + HOURS_STEP).min(UNTIL_MAX); }

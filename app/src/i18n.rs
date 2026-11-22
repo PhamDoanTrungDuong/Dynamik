@@ -195,6 +195,7 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("Refilled", "Đã rót", "已加水", "Rempli"),
     ("Drank", "Đã uống", "已喝", "Bu"),
     ("Snooze", "Để sau", "稍后", "Plus tard"),
+    ("to", "đến", "至", "à"),
     ("Done", "Xong", "完成", "Terminé"),
     ("Later", "Để sau", "稍后", "Plus tard"),
     ("Focus", "Tập trung", "专注", "Concentration"),
