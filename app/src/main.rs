@@ -2102,7 +2102,13 @@ impl App {
         let city = city.as_str();
         // The city just after the page title, however long the title is in this language.
         let title_w = p.layout_no_wrap(t("Prayer").into(), bold(17.0), WHITE).size().x;
-        p.text(pos2(r.left() + 22.0 + title_w + 12.0, r.top() + 24.0), Align2::LEFT_CENTER, city, reg(13.0), DIM);
+        let room = r.center().x - 120.0 - (r.left() + 22.0 + title_w + 12.0);
+        let g = fit_line(&p, city, reg(13.0), DIM, room);
+        p.galley(pos2(r.left() + 22.0 + title_w + 12.0, r.top() + 24.0 - g.size().y / 2.0), g, DIM);
+        // Today's Hijri date, above the day arc (worked out, so it can be a day from a sighted calendar).
+        let (hy, hmon, hd) = prayer::hijri(today);
+        let hijri = format!("{hd} {} {hy}", i18n::t(prayer::HIJRI_MONTHS[(hmon as usize).clamp(1, 12) - 1]));
+        p.text(pos2(r.right() - 38.0, r.top() + 52.0), Align2::RIGHT_CENTER, hijri, reg(11.0), DIM);
         let t = self.prayer_times(today);
         let m = self.now_min();
         let now_f = m as f32 + self.now.second() as f32 / 60.0;

@@ -396,6 +396,18 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("Shafi'i (shadow ×1)", "Shafi'i (bóng ×1)", "沙斐仪派（影长×1）", "Chafiite (ombre ×1)"),
     ("Hanafi (shadow ×2)", "Hanafi (bóng ×2)", "哈乃斐派（影长×2）", "Hanafite (ombre ×2)"),
     ("Imsak {} · Sunrise {}", "Imsak {} · Mặt trời mọc {}", "伊姆萨克 {} · 日出 {}", "Imsak {} · Lever du soleil {}"),
+    // The Hijri months (prayer::HIJRI_MONTHS).
+    ("Muharram", "Muharram", "穆哈兰月", "Mouharram"),
+    ("Safar", "Safar", "色法尔月", "Safar"),
+    ("Rabi' al-Awwal", "Rabi' al-Awwal", "赖比尔·敖外鲁月", "Rabia al-awal"),
+    ("Rabi' al-Thani", "Rabi' al-Thani", "赖比尔·阿色尼月", "Rabia ath-thani"),
+    ("Jumada al-Ula", "Jumada al-Ula", "主马达·敖外鲁月", "Joumada al-oula"),
+    ("Jumada al-Akhirah", "Jumada al-Akhirah", "主马达·阿色尼月", "Joumada ath-thania"),
+    ("Rajab", "Rajab", "赖哲卜月", "Rajab"),
+    ("Sha'ban", "Sha'ban", "舍尔邦月", "Chaabane"),
+    ("Shawwal", "Shawwal", "闪瓦鲁月", "Chawwal"),
+    ("Dhu al-Qi'dah", "Dhu al-Qi'dah", "都尔喀尔德月", "Dhou al-qi'da"),
+    ("Dhu al-Hijjah", "Dhu al-Hijjah", "都尔黑哲月", "Dhou al-hijja"),
     // The five prayers (prayer::NAMES).
     ("Fajr", "Fajr", "晨礼", "Fajr"),
     ("Dhuhr", "Dhuhr", "晌礼", "Dhohr"),
@@ -481,7 +493,7 @@ mod tests {
             }
         }
         // Names looked up through a list rather than written out.
-        for key in crate::prayer::NAMES {
+        for key in crate::prayer::NAMES.iter().chain(&crate::prayer::HIJRI_MONTHS).copied() {
             assert!(TABLE.iter().any(|r| r.0 == key), "{key:?} is asked for but not in the table");
         }
     }

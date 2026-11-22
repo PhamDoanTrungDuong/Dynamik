@@ -233,18 +233,14 @@ fn sun(jd: f64) -> (f64, f64) {
     ((e.sin() * l.sin()).asin(), eqt - 24.0 * (eqt / 24.0).round())
 }
 
-/// Minutes after local midnight for Subuh, Dzuhur, Ashar, Maghrib, Isya (before the per-prayer
-/// adjustments) at place `idx` of the City list (`here` is "My location"'s latitude and longitude) with `method`
-/// (None: the place's usual one). "My location" is in this PC's clock, other places in their own.
-pub fn times_for(date: chrono::NaiveDate, idx: usize, here: (f64, f64), method: Option<usize>) -> [u32; 5] {
-    times_with(date, idx, here, method, Asr::Method)
-}
-
 /// How Ashar is reckoned: as the method does, or by one school for any method.
 #[derive(Clone, Copy, PartialEq)]
 pub enum Asr { Method, Shafii, Hanafi }
 
-/// `times_for` with Ashar by `asr` (a Hanafi in Europe can keep MWL's other times, say).
+/// Minutes after local midnight for Subuh, Dzuhur, Ashar, Maghrib, Isya (before the per-prayer
+/// adjustments) at place `idx` of the City list (`here` is "My location"'s latitude and longitude) with `method`
+/// (None: the place's usual one) and Ashar by `asr` (a Hanafi in Europe can keep MWL's other times, say).
+/// "My location" is in this PC's clock, other places in their own.
 pub fn times_with(date: chrono::NaiveDate, idx: usize, here: (f64, f64), method: Option<usize>, asr: Asr) -> [u32; 5] {
     let mut m = METHODS[method.unwrap_or_else(|| usual_method(idx)).min(METHODS.len() - 1)];
     match asr {
@@ -261,6 +257,28 @@ pub fn times_with(date: chrono::NaiveDate, idx: usize, here: (f64, f64), method:
 pub fn sunrise_for(date: chrono::NaiveDate, idx: usize, here: (f64, f64)) -> u32 {
     let (lat, lng, tz) = place_at(date, idx, here);
     day_at(date, lat, lng, tz, &METHODS[KEMENAG]).1
+}
+
+/// The Hijri month names, in English (the key i18n translates them by).
+pub const HIJRI_MONTHS: [&str; 12] = [
+    "Muharram", "Safar", "Rabi' al-Awwal", "Rabi' al-Thani", "Jumada al-Ula", "Jumada al-Akhirah",
+    "Rajab", "Sha'ban", "Ramadan", "Shawwal", "Dhu al-Qi'dah", "Dhu al-Hijjah",
+];
+
+/// (year, month 1-12, day) in the tabular Islamic calendar (30-year cycle, civil epoch).
+/// shortcut: worked out, not sighted; it can differ by a day from a country's own calendar
+/// (Umm al-Qura, Kemenag's rukyat); a sighting table would be needed to match one exactly.
+pub fn hijri(date: chrono::NaiveDate) -> (i32, u32, u32) {
+    use chrono::Datelike;
+    let jd = date.num_days_from_ce() as i64 + 1_721_425; // Julian day number
+    let mut l = jd - 1_948_440 + 10_632;
+    let n = (l - 1) / 10_631;
+    l = l - 10_631 * n + 354;
+    let j = ((10_985 - l) / 5_316) * ((50 * l) / 17_719) + (l / 5_670) * ((43 * l) / 15_238);
+    l = l - ((30 - j) / 15) * ((17_719 * j) / 50) - (j / 16) * ((15_238 * j) / 43) + 29;
+    let m = (24 * l) / 709;
+    let d = l - (709 * m) / 24;
+    ((30 * n + j - 30) as i32, m as u32, d as u32)
 }
 
 /// Latitude, longitude and that day's UTC offset of place `idx`.
@@ -339,7 +357,7 @@ fn day_at(date: chrono::NaiveDate, lat: f64, lng: f64, tz: f64, m: &Method) -> (
 mod tests {
     #[test]
     fn jakarta_is_plausible() {
-        let t = super::times_for(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(), super::DEFAULT_CITY, (0.0, 0.0), None);
+        let t = super::times_with(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(), super::DEFAULT_CITY, (0.0, 0.0), None, super::Asr::Method);
         // Hanafi Ashar with Kemenag's other times: only Ashar moves, and later.
         let h = super::times_with(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(), super::DEFAULT_CITY, (0.0, 0.0), None, super::Asr::Hanafi);
         assert!(h[2] > t[2] + 20 && [0, 1, 3, 4].iter().all(|&i| h[i] == t[i]), "{t:?} {h:?}");
@@ -349,6 +367,14 @@ mod tests {
         assert!((1092..1099).contains(&t[3]), "{t:?}");
         assert!(t.windows(2).all(|w| w[0] < w[1]));
         assert_eq!(super::CITIES.len(), 84);
+        // Hijri: 1 Muharram 1446 was 7 July 2024 and 1 Ramadan 1445 was 11 March 2024 (Umm al-Qura);
+        // the tabular calendar may be a day out, never more.
+        let near = |y, m, d, ymd: (i32, u32, u32)| {
+            let g = chrono::NaiveDate::from_ymd_opt(y, m, d).unwrap();
+            (-1..=1).any(|k| super::hijri(g + chrono::Duration::days(k)) == ymd)
+        };
+        assert!(near(2024, 7, 7, (1446, 1, 1)) && near(2024, 3, 11, (1445, 9, 1)));
+        assert_eq!(super::hijri(chrono::NaiveDate::from_ymd_opt(2024, 7, 6).unwrap() - chrono::Duration::days(1)).1, 12);
         // Kemenag Terbit for Jakarta, 1 Jan 2026: 05:39 (±3 min), between Subuh and Dzuhur.
         let rise = super::sunrise_for(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(), super::DEFAULT_CITY, (0.0, 0.0));
         assert!((336..343).contains(&rise) && rise > t[0] && rise < t[1], "{rise}");
@@ -373,12 +399,12 @@ mod tests {
         // London at midsummer (MWL 18°): the sun never reaches 18°, so the night rule keeps Subuh
         // after 01:00 and Isya before midnight, in London's summer clock.
         let london = CITIES.len() + WORLD.iter().position(|w| w.1 == "London").unwrap();
-        let t = times_for(date, london, (0.0, 0.0), None);
+        let t = times_with(date, london, (0.0, 0.0), None, super::Asr::Method);
         assert!(t[0] > 60 && t[0] < 4 * 60 && t[4] < 1439 && t[4] > 21 * 60 + 30, "{t:?}");
         assert!((12 * 60 + 55..13 * 60 + 5).contains(&t[1]), "London Dzuhur in BST: {t:?}");
         // Every place keeps the five in order.
         for i in 0..here_index() {
-            let t = times_for(date, i, (0.0, 0.0), None);
+            let t = times_with(date, i, (0.0, 0.0), None, super::Asr::Method);
             assert!(t.windows(2).all(|w| w[0] <= w[1]), "{:?} {t:?}", place_name(i));
         }
     }
