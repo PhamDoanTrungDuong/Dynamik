@@ -345,3 +345,17 @@ of the larger "working set" is the graphics driver's shared DLLs.
 - Calendar: also 10 minutes before (cal_early, on by default; Settings › Google Calendar). Timed
   events from yesterday still running after midnight show today as "until HH:MM" (no reminder).
 - `--page 3 --clips` opens a screenshot on the clipboard side.
+
+## Prayer, reworked
+- "My location" without a fix: the page says so with a Find button and the Next prayer widget says
+  so too (no times for 0°, 0°); reminders were already held back (`prayer_placed`).
+- Names: prayer::NAMES are the English keys (Fajr, Dhuhr, Asr, Maghrib, Isha), translated by i18n.
+- Catch-up: a missed reminder still shows later; the early one until prayer time, the prayer itself
+  for 30 minutes. "Pause media" acts only in the original 2-minute window.
+- Sunrise (Terbit) comes from the same pass as the five times, rounded down with no safety minutes;
+  it is a hollow sun on the arc. Imsak = Fajr - 10 min. Arc labels are spread at least 42 points apart.
+- Asr school (prayer_asr): as the method does, Shafi'i (shadow x1) or Hanafi (x2), for any method.
+- Play again (prayer_resume_media): music the app paused at prayer time (only if it was playing) plays
+  10 minutes later, unless someone played it meanwhile.
+- Hijri date: the tabular (30-year cycle) calendar, worked out on the PC; it can be a day from a
+  sighted one (Umm al-Qura, Kemenag's rukyat).

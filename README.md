@@ -62,7 +62,14 @@ hiện trạng thái và mở ra thành bảng công cụ nhỏ.*
   mã hóa, chỉ lưu trên máy). Sự kiện hôm nay hiện đầu To-do (chỉ đọc), nhắc trước 10 phút (tắt được)
   và lúc bắt đầu; có sự kiện lặp lại, ngày bị bỏ, buổi bị dời hoặc hủy, sự kiện qua đêm. Đọc lại 15 phút
   một lần.
-- **Prayer**: giờ cầu nguyện trên vòng cung mặt trời, nhắc giờ, tự dừng nhạc.
+- **Prayer** (bật trong Settings › Prayer times): 84 thành phố Indonesia, 28 thành phố thế giới (giờ địa
+  phương, có giờ mùa hè) và "My location" (bấm ⌖ để dùng định vị Windows; chưa có vị trí thì trang báo
+  và có nút tìm). 11 phương pháp tính (Kemenag, MWL, ISNA, Egypt, Umm al-Qura, Karachi, JAKIM, MUIS,
+  Diyanet, UOIF, Gulf) hoặc "Usual for the city"; giờ Asr theo phương pháp, Shafi'i hoặc Hanafi. Trang
+  hiện giờ kế tiếp và còn bao lâu, Imsak và giờ mặt trời mọc, ngày Hồi lịch (tính sẵn, có thể lệch 1
+  ngày so với lịch theo trăng), vòng cung với 5 giờ và mặt trời. Tên giờ theo ngôn ngữ của app. Nhắc
+  đúng giờ và trước 10 phút (lỡ thì nhắc bù trong 30 phút), tự dừng nhạc đúng giờ và có thể phát lại sau
+  10 phút, chỉnh riêng từng giờ ±10 phút.
 - **Widgets**: 2 widget một lúc — tuần, pin, giờ cầu nguyện, focus, giờ thế giới, mặt trăng, đếm ngược,
   nước, thời tiết.
 - **Today**: thông báo gần đây và tuần của bạn.
