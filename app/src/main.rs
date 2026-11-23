@@ -3698,11 +3698,13 @@ fn next_event(today: NaiveDate, ev: usize) -> Option<NaiveDate> {
         Some(if this >= today { this } else { NaiveDate::from_ymd_opt(today.year() + 1, m, d)? })
     };
     let table = |t: &[(i32, u32, u32)]| t.iter().filter_map(|&(y, m, d)| NaiveDate::from_ymd_opt(y, m, d)).find(|d| *d >= today);
+    // Past the announced dates, the worked-out Hijri calendar (which can be a day out).
+    let hijri = |month: u32, day: u32| (0..400).map(|k| today + Duration::days(k)).find(|&d| prayer::hijri(d).1 == month && prayer::hijri(d).2 == day);
     match ev {
         0 => fixed(1, 1),
-        1 => table(&RAMADAN),
-        2 => table(&EID_FITR),
-        3 => table(&EID_ADHA),
+        1 => table(&RAMADAN).or_else(|| hijri(9, 1)),
+        2 => table(&EID_FITR).or_else(|| hijri(10, 1)),
+        3 => table(&EID_ADHA).or_else(|| hijri(12, 10)),
         4 => fixed(8, 17),
         _ => fixed(12, 25),
     }
@@ -4012,6 +4014,27 @@ fn set_startup(on: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn countdowns_go_on_past_the_table() {
+        let d = |y, m, dd| NaiveDate::from_ymd_opt(y, m, dd).unwrap();
+        // Inside the table: its dates.
+        assert_eq!(next_event(d(2026, 11, 23), 1), Some(d(2027, 2, 8)));
+        // The worked-out calendar lands within a day of every date in the tables...
+        let first = |from: NaiveDate, m: u32, dd: u32| (0..400).map(|k| from + Duration::days(k)).find(|&x| prayer::hijri(x).1 == m && prayer::hijri(x).2 == dd).unwrap();
+        for (table, m, dd) in [(&RAMADAN, 9, 1), (&EID_FITR, 10, 1), (&EID_ADHA, 12, 10)] {
+            for &(y, mo, da) in table.iter() {
+                let want = d(y, mo, da);
+                let got = first(want - Duration::days(5), m, dd);
+                assert!((got - want).num_days().abs() <= 1, "{want} vs {got}");
+            }
+        }
+        // ...and past them (2031) it still gives a date, the right Hijri day, within a year.
+        for (ev, m, dd) in [(1, 9, 1), (2, 10, 1), (3, 12, 10)] {
+            let got = next_event(d(2031, 1, 1), ev).unwrap();
+            assert!(prayer::hijri(got).1 == m && prayer::hijri(got).2 == dd && got < d(2032, 1, 1), "{ev}: {got}");
+        }
+    }
+
     #[test]
     fn arc_labels_spread_apart() {
         // Maghrib and Isha 10 points apart get pushed to the gap; well-spaced ones stay put.
