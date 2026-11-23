@@ -383,3 +383,15 @@ of the larger "working set" is the graphics driver's shared DLLs.
 - This week counts today's calendar events beside the open tasks, and "Next" is the earliest timed
   task or event still to come.
 - `--page 7 --demo` fills a screenshot with made-up notifications and events.
+
+## System pop-ups, reworked
+- Battery news (charger in/out, low, critical, full) is kept in battery_news until it can show: it
+  takes the place of a pop-up that needs no answer (a bar, a notification, network, Bluetooth,
+  "Now playing", About, a hint) and waits behind one that does (Drink, a task, a prayer, Pomodoro).
+- Low battery: at or under battery_low (15, 20 or 30 %; 20 matches the original's "below 21 %").
+- "Now playing" (popup_song): a new song while the notch is closed shows its cover, name, artist and
+  bars in the cover's colour for 3 s; not in the app's first 10 s, so the song already playing at
+  start isn't news.
+- Bluetooth (popup_headset_off): a headset that goes away says "Disconnected" by the name it had;
+  one at or under 20 % battery says so once, until it is back above 30 %.
+- `--popup song --demo` shows "Now playing" in a screenshot.

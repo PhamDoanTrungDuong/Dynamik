@@ -87,8 +87,16 @@ hiện trạng thái và mở ra thành bảng công cụ nhỏ.*
   "Show notifications". Bên phải là tuần này (ngày đầu tuần theo Settings › Widgets), số việc và sự
   kiện Google Lịch hôm nay, và việc hoặc sự kiện kế tiếp.
 
-**Pop-up hệ thống**: âm lượng, độ sáng, Caps Lock, ngôn ngữ bàn phím, pin, Wi-Fi, tai nghe Bluetooth,
-thông báo Windows.
+**Pop-up hệ thống** (bật/tắt từng loại ở Settings › Popups):
+- Âm lượng, độ sáng, Caps Lock, ngôn ngữ bàn phím.
+- Pin: cắm / rút sạc, pin yếu (15 / 20 / 30%, chọn được), pin rất yếu (dưới 11%), sạc đầy. Báo pin
+  không bị mất khi đang có pop-up khác.
+- Wi-Fi: có mạng, mất mạng, có mạng nhưng không có internet.
+- Tai nghe Bluetooth: kết nối (kèm % pin), ngắt kết nối, pin tai nghe yếu (từ 20%).
+- Đang phát: khi đổi bài lúc notch thu nhỏ, hiện ảnh bìa và tên bài 3 giây.
+- Thông báo Windows (Settings › Notifications): logo app, 2 dòng người gửi và nội dung (nếu bật
+  preview), hiện lâu hơn khi tin dài, không tắt khi đang rê chuột, gom tin "+N"; click để mở đúng
+  app đã gửi.
 
 **Công cụ nhanh**
 - `Ctrl + Alt + Space`: ô hỏi nhanh — tính toán (`12*(3+4)=`) và đổi tiền (`100usd to vnd=`).
