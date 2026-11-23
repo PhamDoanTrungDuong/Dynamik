@@ -70,8 +70,17 @@ hiện trạng thái và mở ra thành bảng công cụ nhỏ.*
   ngày so với lịch theo trăng), vòng cung với 5 giờ và mặt trời. Tên giờ theo ngôn ngữ của app. Nhắc
   đúng giờ và trước 10 phút (lỡ thì nhắc bù trong 30 phút), tự dừng nhạc đúng giờ và có thể phát lại sau
   10 phút, chỉnh riêng từng giờ ±10 phút.
-- **Widgets**: 2 widget một lúc — tuần, pin, giờ cầu nguyện, focus, giờ thế giới, mặt trăng, đếm ngược,
-  nước, thời tiết.
+- **Widgets** (chọn ở Settings › Widgets): 2 widget một lúc, chọn trong 9 loại — This week, Battery,
+  Next prayer, Focus today, World clock, Moon, Countdown, Water, Weather. Click widget Tuần, Giờ cầu
+  nguyện, Tập trung, Nước để mở trang tương ứng.
+  - World clock: 2 thành phố trong 27 (có Hà Nội, TP. Hồ Chí Minh, Bangkok…), kèm chênh lệch giờ so
+    với máy.
+  - Countdown: Năm mới, Ramadan, Eid al-Fitr, Eid al-Adha (sau 2030 tính từ lịch Hijri), Ngày Độc lập
+    Indonesia, Giáng sinh, Tết Nguyên Đán, Quốc khánh Việt Nam, hoặc ngày của bạn (tên tự đặt, DD/MM
+    hằng năm hoặc DD/MM/YYYY).
+  - Weather (MET Norway, đọc lại 30 phút một lần): nhiệt độ, trời, cao/thấp hôm nay, mưa 6 giờ tới,
+    °C hoặc °F; thành phố chọn trong danh sách của Prayer hoặc My location.
+  - Week starts on: Chủ nhật hoặc Thứ hai.
 - **Today**: thông báo gần đây và tuần của bạn.
 
 **Pop-up hệ thống**: âm lượng, độ sáng, Caps Lock, ngôn ngữ bàn phím, pin, Wi-Fi, tai nghe Bluetooth,
