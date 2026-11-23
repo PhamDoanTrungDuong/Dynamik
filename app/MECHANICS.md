@@ -359,3 +359,17 @@ of the larger "working set" is the graphics driver's shared DLLs.
   10 minutes later, unless someone played it meanwhile.
 - Hijri date: the tabular (30-year cycle) calendar, worked out on the PC; it can be a day from a
   sighted one (Umm al-Qura, Kemenag's rukyat).
+
+## Widgets, reworked
+- World clock: 27 cities (Hà Nội, TP. Hồ Chí Minh, Bangkok, Manila, Hong Kong, Taipei, Moscow and
+  Toronto added at the end, so saved choices keep their city), each with its distance from this PC's
+  clock, rounded to the quarter hour.
+- Countdown: Ramadan and the two Eids use the announced dates to 2030, then the tabular Hijri
+  calendar (within a day of every announced date, by test). Added Lunar New Year (Tết, a table to
+  2040), Vietnam's National Day (2/9) and "My own date" (widget_my_name, widget_my_date: "DD/MM"
+  every year, "DD/MM/YYYY" once; 29/02 waits for a leap year). "Independence Day" is named as
+  Indonesia's.
+- Clicking a widget opens its page when it has one and the page is shown: This week → To-do,
+  Next prayer → Prayer, Focus today → Pomodoro, Water → Water.
+- Weather: today's high and low over the forecast steps on this PC's day, the next 6 hours'
+  precipitation_amount (shown from 0.1 mm), and °F as an option (fahrenheit).
