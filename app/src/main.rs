@@ -2238,22 +2238,38 @@ impl App {
             // All of them (up to RECENT_MAX), scrolling; text cut by real width.
             let list = Rect::from_min_max(pos2(a.left() + 4.0, a.top() + 26.0), pos2(a.right() - 4.0, a.bottom() - 6.0));
             self.scroll_zone = Some((list, true));
-            let (recent, preview) = (self.recent.clone(), self.s.notification_preview);
+            let preview = self.s.notification_preview;
+            // One row per app, its newest notification shown with how many it has ("Zalo · 3").
+            let groups = group_by_app(&self.recent);
+            let logos: Vec<Option<egui::TextureHandle>> = groups.iter().map(|g| self.logo_texture(ui.ctx(), &g.1)).collect();
             ui.allocate_new_ui(egui::UiBuilder::new().max_rect(list), |ui| {
                 egui::ScrollArea::vertical().id_salt("today-recent").auto_shrink(false).show(ui, |ui| {
                     ui.spacing_mut().item_spacing.y = 0.0;
-                    for (ts, (app, title, body, _)) in &recent {
-                        let (row, _) = ui.allocate_exact_size(vec2(list.width() - 8.0, 30.0), Sense::hover());
+                    for ((app, _, ts, (title, body), count), logo) in groups.iter().zip(&logos) {
+                        let (row, _) = ui.allocate_exact_size(vec2(list.width() - 8.0, 32.0), Sense::hover());
                         let p = ui.painter();
-                        let (x, right) = (row.left() + 10.0, row.right() - 6.0);
+                        let icon = pos2(row.left() + 18.0, row.center().y);
+                        match logo {
+                            Some(tex) => {
+                                p.rect_filled(Rect::from_center_size(icon, vec2(22.0, 22.0)), 6.0, Color32::from_gray(38));
+                                egui::Image::new(tex).corner_radius(4).paint_at(ui, Rect::from_center_size(icon, vec2(16.0, 16.0)));
+                            }
+                            None => {
+                                p.circle_filled(icon, 10.0, app_color(app));
+                                let initial: String = app.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
+                                p.text(icon, Align2::CENTER_CENTER, initial, bold(11.0), WHITE);
+                            }
+                        }
+                        let (x, right) = (row.left() + 36.0, row.right() - 6.0);
                         let when = p.layout_no_wrap(ago(now - ts), reg(10.0), DIM);
                         let ww = when.size().x;
-                        p.galley(pos2(right - ww, row.top() + 8.0 - when.size().y / 2.0), when, DIM);
-                        let who = fit_line(p, app, reg(10.0), DIM, right - x - ww - 8.0);
-                        p.galley(pos2(x, row.top() + 8.0 - who.size().y / 2.0), who, DIM);
+                        p.galley(pos2(right - ww, row.top() + 9.0 - when.size().y / 2.0), when, DIM);
+                        let label = if *count > 1 { format!("{app} · {count}") } else { app.clone() };
+                        let who = fit_line(p, &label, reg(10.0), DIM, right - x - ww - 8.0);
+                        p.galley(pos2(x, row.top() + 9.0 - who.size().y / 2.0), who, DIM);
                         let line = if preview && !body.is_empty() { format!("{title}: {body}") } else { title.clone() };
                         let said = fit_line(p, &line, bold(12.0), WHITE, right - x);
-                        p.galley(pos2(x, row.top() + 22.0 - said.size().y / 2.0), said, WHITE);
+                        p.galley(pos2(x, row.top() + 23.0 - said.size().y / 2.0), said, WHITE);
                     }
                 });
             });
@@ -2926,12 +2942,12 @@ impl eframe::App for App {
                 self.settings_open = !self.settings_open;
             }
             let notice_app = self.alert.as_ref().and_then(|a| match &a.kind {
-                Kind::Notice(_, id, _) if !id.is_empty() && !id.chars().any(|c| c == '"' || c.is_control()) => Some(id.clone()),
+                Kind::Notice(_, id, _) if can_open_app(id) => Some(id.clone()),
                 _ => None,
             });
             if !self.expanded && resp.clicked() && notice_app.is_some() {
                 // A notification opens the app that sent it, as a click on the toast would.
-                let opened = notice_app.is_some_and(|id| std::process::Command::new("explorer.exe").arg(format!("shell:AppsFolder\\{id}")).spawn().is_ok());
+                let opened = notice_app.is_some_and(|id| open_app(&id));
                 if opened {
                     self.alert = None;
                 } else {
@@ -3784,6 +3800,30 @@ fn summer(rule: Dst, std: f64, utc: NaiveDateTime) -> bool {
     }
 }
 
+/// One group per app (newest app first): (app name, app id, newest time, its (title, body), how many).
+type AppGroup = (String, String, i64, (String, String), usize);
+
+fn group_by_app(recent: &[(i64, media::Notice)]) -> Vec<AppGroup> {
+    let mut out: Vec<AppGroup> = vec![];
+    for (ts, (app, title, body, id)) in recent {
+        match out.iter_mut().find(|g| g.0 == *app && g.1 == *id) {
+            Some(g) => g.4 += 1, // newest first, so the one kept is the newest
+            None => out.push((app.clone(), id.clone(), *ts, (title.clone(), body.clone()), 1)),
+        }
+    }
+    out
+}
+
+/// Whether `id` (an app's AppUserModelId from a notification) is safe to hand to Explorer.
+fn can_open_app(id: &str) -> bool {
+    !id.is_empty() && !id.chars().any(|c| c == '"' || c.is_control())
+}
+
+/// Opens the app that sent a notification, as a click on its toast would; false if it couldn't.
+fn open_app(id: &str) -> bool {
+    can_open_app(id) && std::process::Command::new("explorer.exe").arg(format!("shell:AppsFolder\\{id}")).spawn().is_ok()
+}
+
 /// A clock's distance from this PC's, rounded to the quarter hour: "+1 h", "−5:30 h", "same time".
 fn offset_text(minutes: i64) -> String {
     let q = ((minutes as f64 / 15.0).round() as i64) * 15;
@@ -4167,6 +4207,17 @@ mod tests {
             let got = next_event(d(2031, 1, 1), ev).unwrap();
             assert!(prayer::hijri(got).1 == m && prayer::hijri(got).2 == dd && got < d(2032, 1, 1), "{ev}: {got}");
         }
+    }
+
+    #[test]
+    fn notifications_group_by_app() {
+        let n = |app: &str, title: &str, ts: i64| (ts, (app.to_string(), title.to_string(), String::new(), format!("{app}.id")));
+        let recent = vec![n("Zalo", "Minh", 30), n("Teams", "Standup", 20), n("Zalo", "Lan", 10), n("Zalo", "Hoa", 5)];
+        let g = group_by_app(&recent);
+        assert_eq!(g.len(), 2);
+        assert_eq!((g[0].0.as_str(), g[0].2, g[0].3 .0.as_str(), g[0].4), ("Zalo", 30, "Minh", 3)); // the newest kept
+        assert_eq!((g[1].0.as_str(), g[1].4), ("Teams", 1));
+        assert!(!can_open_app("") && !can_open_app("a\"b") && can_open_app("Microsoft.Teams_8wekyb3d8bbwe!Teams"));
     }
 
     #[test]
