@@ -98,6 +98,7 @@ const WATER_LOG_DAYS: usize = 60; // days of water history kept
 const CAL_EARLY_MIN: u32 = 10; // calendar events also remind this many minutes before
 const SONG_POPUP_SECS: f32 = 3.0; // "Now playing" stays this long
 const SONG_QUIET_START_SECS: u64 = 10; // ...and doesn't show in the app's first seconds
+const HEADSET_LOW: u8 = 20; // a headset's battery at or under this (%) says so once
 const UNDO_SECS: f32 = 10.0; // how long the Water page offers to take a drink back
 const SLEEP_GAP_SECS: f64 = 5.0; // a gap this long between looks while Pomodoro runs = the PC slept
 const RESET_CONFIRM_SECS: f32 = 3.0;
@@ -326,6 +327,8 @@ struct App {
     last_network: Option<(String, u8)>,
     bluetooth: std::sync::Arc<std::sync::Mutex<Option<Vec<media::Headset>>>>,
     last_headsets: Option<HashSet<u64>>,
+    headset_names: std::collections::HashMap<u64, String>, // the headsets last seen, to name one that goes away
+    headset_low_told: HashSet<u64>, // headsets already told of a low battery (until charged again)
     notices: std::sync::Arc<std::sync::Mutex<Vec<media::Notice>>>,
     // Where the Weather widget looks (None while it isn't shown), what it found, and currency rates.
     weather_place: std::sync::Arc<std::sync::Mutex<Option<(f64, f64)>>>,
@@ -451,7 +454,7 @@ impl App {
             shelf, shelf_view: if !live && std::env::args().any(|a| a == "--clips") { ShelfView::Clipboard } else { ShelfView::Files },
             clips, clipboard, last_clip, copied: None,
             battery: battery(), prayer_fired: HashSet::new(), hidden: false, media: demo_music(media::Media::start(s.lyrics, live), !live && page == 0), lyrics_open: false, volume: media::volume_watch(), last_volume: None, last_caps: caps_lock(), last_lang: input_lang(), network: media::network_watch(), last_network: None,
-            bluetooth: if live { media::bluetooth_watch() } else { Default::default() }, last_headsets: None,
+            bluetooth: if live { media::bluetooth_watch() } else { Default::default() }, last_headsets: None, headset_names: Default::default(), headset_low_told: HashSet::new(),
             notices: if live && s.notifications { media::notification_watch() } else { Default::default() },
             weather_place: weather_place.clone(),
             // --weather SYMBOL fills a screenshot's Weather widget (no network).
@@ -1126,6 +1129,7 @@ impl App {
             let now: HashSet<u64> = heads.iter().map(|h| h.0).collect();
             let mut wait = false;
             if let Some(old) = &self.last_headsets {
+                let gone = old.iter().find(|id| !now.contains(id)).and_then(|id| self.headset_names.get(id).cloned());
                 if let Some((_, name, battery)) = heads.iter().find(|h| !old.contains(&h.0)) {
                     if self.s.popup_bluetooth && free {
                         let body = battery.map_or(t("Connected").to_string(), |b| tr("Connected · {}%", &[&b]));
@@ -1133,9 +1137,25 @@ impl App {
                     }
                     // A pop-up waiting for an answer is up: show this one after it, not never.
                     wait = self.s.popup_bluetooth && !free;
+                } else if let Some(name) = gone {
+                    // One that went away (turned off, out of range, put in its case).
+                    if self.s.popup_bluetooth && self.s.popup_headset_off && free {
+                        self.alert = Some(Alert { title: name, body: t("Disconnected").into(), kind: Kind::Bluetooth(None), at: Instant::now() });
+                    }
+                    wait = self.s.popup_bluetooth && self.s.popup_headset_off && !free;
+                }
+            }
+            // A headset's battery running low says so once, until it is charged again.
+            let low = heads.iter().find(|h| h.2.is_some_and(|b| b <= HEADSET_LOW) && !self.headset_low_told.contains(&h.0)).cloned();
+            self.headset_low_told.retain(|id| heads.iter().any(|h| h.0 == *id && h.2.is_some_and(|b| b <= HEADSET_LOW + 10)));
+            if let (Some((id, name, battery)), false) = (low, wait) {
+                if self.s.popup_bluetooth && self.s.popup_headset_off && free && self.alert.as_ref().is_none_or(|a| !matches!(a.kind, Kind::Bluetooth(_))) {
+                    self.headset_low_told.insert(id);
+                    self.alert = Some(Alert { title: name, body: tr("Headset battery low · {}%", &[&battery.unwrap_or(0)]), kind: Kind::Bluetooth(battery), at: Instant::now() });
                 }
             }
             if !wait {
+                self.headset_names = heads.iter().map(|h| (h.0, h.1.clone())).collect();
                 self.last_headsets = Some(now);
             }
         }
