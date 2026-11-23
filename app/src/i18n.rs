@@ -138,6 +138,8 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("Degrees in °F", "Độ F (°F)", "使用华氏度 (°F)", "Degrés en °F"),
     ("Rain {} mm", "Mưa {} mm", "降雨 {} 毫米", "Pluie {} mm"),
     ("{} tasks · {} events today", "{} việc · {} sự kiện hôm nay", "今天 {} 项任务 · {} 个日程", "{} tâches · {} événements aujourd'hui"),
+    ("Click to open {} · right-click to remove", "Click để mở {} · click phải để xóa", "点击打开{} · 右键删除", "Clic pour ouvrir {} · clic droit pour retirer"),
+    ("Right-click to remove", "Click phải để xóa", "右键删除", "Clic droit pour retirer"),
     ("same time", "cùng giờ", "同一时间", "même heure"),
     ("{} h", "{} giờ", "{} 小时", "{} h"),
     ("Open {}", "Mở {}", "打开{}", "Ouvrir {}"),

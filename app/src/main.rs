@@ -2242,12 +2242,26 @@ impl App {
             // One row per app, its newest notification shown with how many it has ("Zalo · 3").
             let groups = group_by_app(&self.recent);
             let logos: Vec<Option<egui::TextureHandle>> = groups.iter().map(|g| self.logo_texture(ui.ctx(), &g.1)).collect();
+            let (mut open, mut remove) = (None, None);
             ui.allocate_new_ui(egui::UiBuilder::new().max_rect(list), |ui| {
                 egui::ScrollArea::vertical().id_salt("today-recent").auto_shrink(false).show(ui, |ui| {
                     ui.spacing_mut().item_spacing.y = 0.0;
-                    for ((app, _, ts, (title, body), count), logo) in groups.iter().zip(&logos) {
-                        let (row, _) = ui.allocate_exact_size(vec2(list.width() - 8.0, 32.0), Sense::hover());
+                    for ((app, id, ts, (title, body), count), logo) in groups.iter().zip(&logos) {
+                        // Click: open the app that sent it. Right-click: take that app's off the list.
+                        let (row, resp) = ui.allocate_exact_size(vec2(list.width() - 8.0, 32.0), Sense::click());
+                        let hint = if can_open_app(id) { tr("Click to open {} · right-click to remove", &[app]) } else { t("Right-click to remove").to_string() };
+                        let resp = resp.on_hover_text(&hint);
+                        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("{app}: {title}")));
+                        if resp.clicked() && can_open_app(id) {
+                            open = Some(id.clone());
+                        }
+                        if resp.secondary_clicked() {
+                            remove = Some((app.clone(), id.clone()));
+                        }
                         let p = ui.painter();
+                        if resp.hovered() {
+                            p.rect_filled(row, 8.0, Color32::from_gray(30));
+                        }
                         let icon = pos2(row.left() + 18.0, row.center().y);
                         match logo {
                             Some(tex) => {
@@ -2273,6 +2287,12 @@ impl App {
                     }
                 });
             });
+            if let Some(id) = open {
+                open_app(&id);
+            }
+            if let Some((app, id)) = remove {
+                self.recent.retain(|(_, n)| !(n.0 == app && n.3 == id));
+            }
         }
         p.rect_filled(b, 14.0, CARD);
         self.widget(&p, b, 0);
