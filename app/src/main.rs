@@ -111,12 +111,15 @@ const EID_ADHA: [(i32, u32, u32); 5] = [(2026, 5, 27), (2027, 5, 16), (2028, 5, 
 #[derive(Clone, Copy)]
 enum Dst { No, Eu, Us, Au }
 // Order and defaults (Tokyo, London) from the original's table at 0x1400e40d8.
-const WORLD: [(&str, f64, Dst); 19] = [
+// World clock cities. Settings keep a city's place in this list, so new ones go at the end.
+const WORLD: [(&str, f64, Dst); 27] = [
     ("Jakarta", 7.0, Dst::No), ("Makassar", 8.0, Dst::No), ("Jayapura", 9.0, Dst::No), ("Singapore", 8.0, Dst::No),
     ("Kuala Lumpur", 8.0, Dst::No), ("Tokyo", 9.0, Dst::No), ("Seoul", 9.0, Dst::No), ("Beijing", 8.0, Dst::No),
     ("Mumbai", 5.5, Dst::No), ("Dubai", 4.0, Dst::No), ("Mecca", 3.0, Dst::No), ("Istanbul", 3.0, Dst::No),
     ("Cairo", 2.0, Dst::Eu), ("London", 0.0, Dst::Eu), ("Paris", 1.0, Dst::Eu), ("Berlin", 1.0, Dst::Eu),
     ("New York", -5.0, Dst::Us), ("Los Angeles", -8.0, Dst::Us), ("Sydney", 10.0, Dst::Au),
+    ("Hà Nội", 7.0, Dst::No), ("TP. Hồ Chí Minh", 7.0, Dst::No), ("Bangkok", 7.0, Dst::No), ("Manila", 8.0, Dst::No),
+    ("Hong Kong", 8.0, Dst::No), ("Taipei", 8.0, Dst::No), ("Moscow", 3.0, Dst::No), ("Toronto", -5.0, Dst::Us),
 ];
 
 fn main() -> eframe::Result {
