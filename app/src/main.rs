@@ -100,7 +100,14 @@ const UNDO_SECS: f32 = 10.0; // how long the Water page offers to take a drink b
 const SLEEP_GAP_SECS: f64 = 5.0; // a gap this long between looks while Pomodoro runs = the PC slept
 const RESET_CONFIRM_SECS: f32 = 3.0;
 const MOON: [&str; 8] = ["New Moon", "Waxing Crescent", "First Quarter", "Waxing Gibbous", "Full Moon", "Waning Gibbous", "Last Quarter", "Waning Crescent"];
-const EVENTS: [&str; 6] = ["New Year", "Ramadan", "Eid al-Fitr", "Eid al-Adha", "Independence Day", "Christmas"];
+// Countdown events. Settings keep an event's place in this list, so new ones go at the end.
+const EVENTS: [&str; 8] = ["New Year", "Ramadan", "Eid al-Fitr", "Eid al-Adha", "Indonesia's Independence Day", "Christmas", "Lunar New Year (Tết)", "Vietnam's National Day"];
+// The first day of the lunar year (Chinese calendar). shortcut: Vietnam's Tết is the same day in
+// these years as far as known (it has differed by a day, as in 2007); extend the table past 2040.
+const LUNAR_NEW_YEAR: [(i32, u32, u32); 15] = [
+    (2026, 2, 17), (2027, 2, 6), (2028, 1, 26), (2029, 2, 13), (2030, 2, 3), (2031, 1, 23), (2032, 2, 11), (2033, 1, 31),
+    (2034, 2, 19), (2035, 2, 8), (2036, 1, 28), (2037, 2, 15), (2038, 2, 4), (2039, 1, 24), (2040, 2, 12),
+];
 const WIDGETS: [&str; 9] = ["This week", "Battery", "Next prayer", "Focus today", "World clock", "Moon", "Countdown", "Water", "Weather"];
 const WEATHER_WIDGET: usize = 8;
 // Estimated Islamic dates (official announcements can differ by a day).
@@ -3706,6 +3713,8 @@ fn next_event(today: NaiveDate, ev: usize) -> Option<NaiveDate> {
         2 => table(&EID_FITR).or_else(|| hijri(10, 1)),
         3 => table(&EID_ADHA).or_else(|| hijri(12, 10)),
         4 => fixed(8, 17),
+        6 => table(&LUNAR_NEW_YEAR),
+        7 => fixed(9, 2),
         _ => fixed(12, 25),
     }
 }
@@ -4019,6 +4028,9 @@ mod tests {
         let d = |y, m, dd| NaiveDate::from_ymd_opt(y, m, dd).unwrap();
         // Inside the table: its dates.
         assert_eq!(next_event(d(2026, 11, 23), 1), Some(d(2027, 2, 8)));
+        assert_eq!(next_event(d(2026, 11, 23), 6), Some(d(2027, 2, 6))); // Tết
+        assert_eq!(next_event(d(2026, 11, 23), 7), Some(d(2027, 9, 2))); // 2/9
+        assert_eq!(next_event(d(2041, 3, 1), 6), None); // past the Tết table: "—", not a wrong date
         // The worked-out calendar lands within a day of every date in the tables...
         let first = |from: NaiveDate, m: u32, dd: u32| (0..400).map(|k| from + Duration::days(k)).find(|&x| prayer::hijri(x).1 == m && prayer::hijri(x).2 == dd).unwrap();
         for (table, m, dd) in [(&RAMADAN, 9, 1), (&EID_FITR, 10, 1), (&EID_ADHA, 12, 10)] {

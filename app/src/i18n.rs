@@ -131,8 +131,10 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("Ramadan", "Ramadan", "斋月", "Ramadan"),
     ("Eid al-Fitr", "Lễ Eid al-Fitr", "开斋节", "Aïd el-Fitr"),
     ("Eid al-Adha", "Lễ Eid al-Adha", "宰牲节", "Aïd el-Kébir"),
-    ("Independence Day", "Ngày Độc lập", "独立日", "Fête de l'indépendance"),
+    ("Indonesia's Independence Day", "Ngày Độc lập Indonesia", "印尼独立日", "Fête de l'indépendance indonésienne"),
     ("Christmas", "Giáng sinh", "圣诞节", "Noël"),
+    ("Lunar New Year (Tết)", "Tết Nguyên Đán", "春节", "Nouvel An lunaire (Têt)"),
+    ("Vietnam's National Day", "Quốc khánh Việt Nam", "越南国庆节", "Fête nationale du Vietnam"),
     // Widgets
     ("This week", "Tuần này", "本周", "Cette semaine"),
     ("Battery", "Pin", "电池", "Batterie"),
@@ -493,7 +495,7 @@ mod tests {
             }
         }
         // Names looked up through a list rather than written out.
-        for key in crate::prayer::NAMES.iter().chain(&crate::prayer::HIJRI_MONTHS).copied() {
+        for key in crate::prayer::NAMES.iter().chain(&crate::prayer::HIJRI_MONTHS).chain(&crate::EVENTS).chain(&crate::WIDGETS).copied() {
             assert!(TABLE.iter().any(|r| r.0 == key), "{key:?} is asked for but not in the table");
         }
     }
