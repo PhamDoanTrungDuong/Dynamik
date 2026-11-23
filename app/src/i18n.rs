@@ -140,6 +140,7 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("{} tasks · {} events today", "{} việc · {} sự kiện hôm nay", "今天 {} 项任务 · {} 个日程", "{} tâches · {} événements aujourd'hui"),
     ("Click to open {} · right-click to remove", "Click để mở {} · click phải để xóa", "点击打开{} · 右键删除", "Clic pour ouvrir {} · clic droit pour retirer"),
     ("Right-click to remove", "Click phải để xóa", "右键删除", "Clic droit pour retirer"),
+    ("Now playing — when the song changes", "Đang phát — khi đổi bài", "正在播放 — 切换歌曲时", "Lecture en cours — au changement de morceau"),
     ("same time", "cùng giờ", "同一时间", "même heure"),
     ("{} h", "{} giờ", "{} 小时", "{} h"),
     ("Open {}", "Mở {}", "打开{}", "Ouvrir {}"),

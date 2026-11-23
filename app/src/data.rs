@@ -149,6 +149,8 @@ pub struct Settings {
     pub hud_language: bool,
     pub hud_brightness: bool,
     pub popup_bluetooth: bool,
+    pub popup_song: bool, // "Now playing" when the song changes
+    pub popup_headset_off: bool, // a headset going away, or its battery running low
     pub notifications: bool,
     pub notification_preview: bool,
     pub mascot: bool,
@@ -246,6 +248,8 @@ impl Settings {
             hud_language: get(&m, "hud_language", true),
             hud_brightness: get(&m, "hud_brightness", true),
             popup_bluetooth: get(&m, "popup_bluetooth", true),
+            popup_song: get(&m, "popup_song", true),
+            popup_headset_off: get(&m, "popup_headset_off", true),
             notifications: get(&m, "notifications", true),
             notification_preview: get(&m, "notification_preview", false),
             mascot: get(&m, "mascot", true),
@@ -319,6 +323,8 @@ impl Settings {
             format!("hud_language={}", s.hud_language),
             format!("hud_brightness={}", s.hud_brightness),
             format!("popup_bluetooth={}", s.popup_bluetooth),
+            format!("popup_song={}", s.popup_song),
+            format!("popup_headset_off={}", s.popup_headset_off),
             format!("notifications={}", s.notifications),
             format!("notification_preview={}", s.notification_preview),
             format!("mascot={}", s.mascot),

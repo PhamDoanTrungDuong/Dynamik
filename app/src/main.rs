@@ -96,6 +96,8 @@ const BLINK_MS: i64 = 180;
 const LONG_BREAK_EVERY: u32 = 4;
 const WATER_LOG_DAYS: usize = 60; // days of water history kept
 const CAL_EARLY_MIN: u32 = 10; // calendar events also remind this many minutes before
+const SONG_POPUP_SECS: f32 = 3.0; // "Now playing" stays this long
+const SONG_QUIET_START_SECS: u64 = 10; // ...and doesn't show in the app's first seconds
 const UNDO_SECS: f32 = 10.0; // how long the Water page offers to take a drink back
 const SLEEP_GAP_SECS: f64 = 5.0; // a gap this long between looks while Pomodoro runs = the PC slept
 const RESET_CONFIRM_SECS: f32 = 3.0;
@@ -204,7 +206,7 @@ enum HudKind { Volume, Muted, Brightness, Caps, Lang }
 /// Asking Windows where this PC is, for "My location".
 #[derive(Clone, Copy, PartialEq)]
 enum Locating { Idle, Busy, Failed, Got(f64, f64) }
-enum Kind { Drink, Refill, TaskStart(usize), TaskEnd(usize), Event(u32), Hint, Prayer(u32, bool), Battery(u8, bool), Hud(HudKind, f32), Network(u8), Bluetooth(Option<u8>), Notice(String, String, u32), Info, About }
+enum Kind { Drink, Refill, TaskStart(usize), TaskEnd(usize), Event(u32), Hint, Song, Prayer(u32, bool), Battery(u8, bool), Hud(HudKind, f32), Network(u8), Bluetooth(Option<u8>), Notice(String, String, u32), Info, About }
 struct Alert { title: String, body: String, kind: Kind, at: Instant }
 
 /// A critically-tuned spring for one value.
@@ -296,6 +298,8 @@ struct App {
     focus_log: BTreeMap<NaiveDate, u32>,
     rounds_day: NaiveDate, // the day `rounds` counts for
     prayer_paused: Option<Instant>, // when music was paused for prayer (for "Play again after")
+    last_song: Option<String>, // the song last seen playing (title and artist), for "Now playing"
+    started: Instant,
     battery_news: Option<Alert>, // a battery pop-up waiting for one that needs an answer to go
     held_notice: Option<(media::Notice, u32)>, // a notification kept back during quiet focus, and how many more
     focus_acc: f64,
@@ -442,7 +446,7 @@ impl App {
             // --page 2 --demo shows the Water page just after a 250 ml drink (with its Undo).
             water_log,
             last_drink: (!live && page == 2 && std::env::args().any(|a| a == "--demo")).then(|| (250, now.hour() as usize, 0, Instant::now())),
-            mode: Mode::Focus, left, running: false, rounds: 0, rounds_day: now.date(), prayer_paused: None, battery_news: None, held_notice: None, focus_log, focus_acc: 0.0, last_tick: Instant::now(),
+            mode: Mode::Focus, left, running: false, rounds: 0, rounds_day: now.date(), prayer_paused: None, last_song: None, started: Instant::now(), battery_news: None, held_notice: None, focus_log, focus_acc: 0.0, last_tick: Instant::now(),
             // --clips: a screenshot of the clipboard side.
             shelf, shelf_view: if !live && std::env::args().any(|a| a == "--clips") { ShelfView::Clipboard } else { ShelfView::Files },
             clips, clipboard, last_clip, copied: None,
@@ -838,7 +842,7 @@ impl App {
         // Battery news isn't lost behind another pop-up: it takes the place of one that needs no
         // answer (a volume bar, a notification…), or waits for one that does (Drank / Snooze…).
         if self.battery_news.is_some() {
-            let passing = self.alert.as_ref().is_none_or(|a| matches!(a.kind, Kind::Hud(..) | Kind::Notice(..) | Kind::Network(_) | Kind::Bluetooth(_) | Kind::Battery(..) | Kind::About | Kind::Hint));
+            let passing = self.alert.as_ref().is_none_or(|a| matches!(a.kind, Kind::Hud(..) | Kind::Notice(..) | Kind::Network(_) | Kind::Bluetooth(_) | Kind::Battery(..) | Kind::About | Kind::Hint | Kind::Song));
             if passing {
                 let mut news = self.battery_news.take().unwrap();
                 news.at = Instant::now();
@@ -865,6 +869,7 @@ impl App {
             Kind::Notice(..) => a.at.elapsed().as_secs_f32() > notice_secs(&a.title, &a.body) && self.last_inside.elapsed().as_secs_f32() > NOTICE_AFTER_HOVER_SECS,
             Kind::About => a.at.elapsed().as_secs_f32() > ABOUT_SECS,
             Kind::Hint => a.at.elapsed().as_secs_f32() > HINT_SECS,
+            Kind::Song => a.at.elapsed().as_secs_f32() > SONG_POPUP_SECS,
             Kind::Prayer(_, early) => a.at.elapsed().as_secs_f32() > if early { PRAYER_EARLY_SECS } else { PRAYER_POPUP_SECS },
             Kind::Event(_) => a.at.elapsed().as_secs_f32() > PRAYER_POPUP_SECS,
             _ => false,
@@ -1084,7 +1089,7 @@ impl App {
     /// Volume, Caps Lock and keyboard-language changes show a short indicator, unless a pop-up
     /// that needs an answer is up.
     fn watch_indicators(&mut self) {
-        let free = self.alert.as_ref().is_none_or(|a| matches!(a.kind, Kind::Hud(..) | Kind::Info | Kind::Battery(..) | Kind::Bluetooth(_) | Kind::Notice(..)));
+        let free = self.alert.as_ref().is_none_or(|a| matches!(a.kind, Kind::Hud(..) | Kind::Info | Kind::Battery(..) | Kind::Bluetooth(_) | Kind::Notice(..) | Kind::Song));
         let vol = *self.volume.lock().unwrap();
         if let (Some((v, m)), Some((ov, om))) = (vol, self.last_volume) {
             if self.s.hud_volume && free && (m != om || (v - ov).abs() > 0.004) {
@@ -1100,6 +1105,19 @@ impl App {
             self.last_bright = seq;
             if self.s.hud_brightness && free {
                 self.alert = Some(Alert { title: t("Brightness").into(), body: String::new(), kind: Kind::Hud(HudKind::Brightness, level), at: Instant::now() });
+            }
+        }
+        // "Now playing": a new song while the notch is closed shows its cover and name for a moment.
+        // The first song read at start is just noted (it isn't news).
+        let song = self.media.now.lock().ok().map(|n| (n.active() && n.playing, format!("{}\u{1}{}", n.title, n.artist)));
+        if let Some((playing, key)) = song {
+            let news = self.last_song.as_ref().is_some_and(|k| *k != key) && playing;
+            if news && self.s.popup_song && free && !self.expanded && self.started.elapsed().as_secs() > SONG_QUIET_START_SECS {
+                let (title, artist) = key.split_once('\u{1}').map(|(a, b)| (a.to_string(), b.to_string())).unwrap_or_default();
+                self.alert = Some(Alert { title, body: artist, kind: Kind::Song, at: Instant::now() });
+            }
+            if playing || self.last_song.is_none() {
+                self.last_song = Some(key);
             }
         }
         // A headset that was not connected at the last look shows once; those connected at start do not.
@@ -1248,7 +1266,7 @@ impl App {
         let p = ui.painter().clone();
         let icon = pos2(r.left() + 46.0, r.center().y);
         let tx = r.left() + 84.0;
-        if !matches!(a.kind, Kind::Hud(..) | Kind::Notice(..)) {
+        if !matches!(a.kind, Kind::Hud(..) | Kind::Notice(..) | Kind::Song) {
             p.text(pos2(tx, r.center().y - 9.0), Align2::LEFT_CENTER, &title, bold(17.0), WHITE);
             p.text(pos2(tx, r.center().y + 13.0), Align2::LEFT_CENTER, &body, reg(14.0), DIM);
         }
@@ -1410,6 +1428,24 @@ impl App {
                     let said = fit_line(&p, &body, reg(13.0), DIM, r.right() - 20.0 - x);
                     p.galley(pos2(x, y + 10.0 - said.size().y / 2.0), said, DIM);
                 }
+            }
+            Kind::Song => {
+                // The cover, the song and who sings it, and the level bars in the cover's colour.
+                let now = self.media.now.lock().map(|n| n.clone()).unwrap_or_default();
+                let cover = Rect::from_center_size(pos2(r.left() + 34.0, r.center().y), vec2(36.0, 36.0));
+                match self.art_texture(ui.ctx(), &now) {
+                    Some(tex) => {
+                        egui::Image::new(&tex).corner_radius(8).paint_at(ui, cover);
+                    }
+                    None => album_art(&p, cover),
+                }
+                let x = cover.right() + 12.0;
+                let room = r.right() - 52.0 - x;
+                let song = fit_line(&p, &title, bold(14.0), WHITE, room);
+                p.galley(pos2(x, r.center().y - 9.0 - song.size().y / 2.0), song, WHITE);
+                let who = fit_line(&p, &body, reg(12.0), DIM, room);
+                p.galley(pos2(x, r.center().y + 10.0 - who.size().y / 2.0), who, DIM);
+                bars(&p, pos2(r.right() - 30.0, r.center().y), true, self.music_tint());
             }
             Kind::About | Kind::Hint => {
                 // A violet dot beside the name and version (title and body are drawn above).
@@ -2730,6 +2766,7 @@ impl App {
                     switch_row(ui, "Battery", &mut s.popup_battery);
                     switch_row(ui, "Wi-Fi", &mut s.popup_wifi);
                     switch_row(ui, "Bluetooth headset", &mut s.popup_bluetooth);
+                    switch_row(ui, "Now playing — when the song changes", &mut s.popup_song);
                     switch_row(ui, "Hide in full screen — games, videos and slides that fill the screen", &mut s.hide_fullscreen);
                 });
                 card(ui, "Notifications", |ui| {
@@ -4037,6 +4074,8 @@ fn demo_alert() -> Option<Alert> {
         "notice-long" => ("Nhóm: TRI THỨC CHỈ ĐẠO CHUNG VÀ PHỐI HỢP", "Anh Tám (Phòng KH): Mai họp lúc 9h nhé mọi người, nhớ mang laptop", Kind::Notice("Zalo".into(), String::new(), 0)),
         "brightness" => ("Brightness", "", Kind::Hud(HudKind::Brightness, 0.6)),
         "welcome" => return Some(welcome_hint(false)),
+        // With --demo, the made-up song's cover (demo_music) shows too.
+        "song" => ("Nơi này có anh (Lofi Version) — bản phối dài cho buổi chiều", "Sơn Tùng M-TP", Kind::Song),
         "taken" => return Some(taken_hint(tray::TAKEN_ASK | tray::TAKEN_OCR)),
         _ => return None,
     };
