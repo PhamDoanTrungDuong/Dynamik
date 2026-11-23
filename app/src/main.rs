@@ -418,7 +418,7 @@ impl App {
                 calendar::watch(ical_url.clone())
             } else {
                 // --demo on a screenshot of To-do shows made-up events.
-                let demo = std::env::args().any(|a| a == "--demo") && page == 4;
+                let demo = std::env::args().any(|a| a == "--demo") && (page == 4 || page == TODAY_PAGE);
                 let ev = |title: &str, start, dur, carried| calendar::Event { title: title.into(), start, dur, carried };
                 let events = if demo { vec![ev("Night shift", None, 90, true), ev("Team trip", None, 0, false), ev("Standup", Some(540), 30, false)] } else { vec![] };
                 std::sync::Arc::new(std::sync::Mutex::new(calendar::Today { status: calendar::Status::Ready, events }))
@@ -2282,12 +2282,18 @@ impl App {
                     }
                     p.text(pos2(cx, r.top() + 58.0), Align2::CENTER_CENTER, d.day().to_string(), bold(13.0), col);
                 }
+                // Today: open tasks and the calendar's events, and whichever comes next of either.
                 let open = self.tasks.iter().filter(|t| t.done_day != Some(today)).count();
+                let events = self.calendar.lock().unwrap().events.clone();
                 p.circle_filled(pos2(r.left() + 18.0, r.top() + 95.0), 4.0, GREEN);
-                p.text(pos2(r.left() + 28.0, r.top() + 95.0), Align2::LEFT_CENTER, tr("{} tasks today", &[&open]), bold(12.0), WHITE);
-                let next = self.tasks.iter().filter(|t| t.done_day != Some(today) && t.start.is_some_and(|s| s as u32 >= self.now_min())).min_by_key(|t| t.start);
-                let line = next.map(|task| tr("Next: {}, {}", &[&ellipsize(&task.title, 16), &hm(task.start.unwrap() as u32)])).unwrap_or_else(|| t("Nothing scheduled").into());
-                p.text(pos2(r.left() + 28.0, r.top() + 111.0), Align2::LEFT_CENTER, line, reg(11.0), DIM);
+                let head = if events.is_empty() { tr("{} tasks today", &[&open]) } else { tr("{} tasks · {} events today", &[&open, &events.len()]) };
+                p.text(pos2(r.left() + 28.0, r.top() + 95.0), Align2::LEFT_CENTER, head, bold(12.0), WHITE);
+                let m = self.now_min();
+                let task_next = self.tasks.iter().filter(|t| t.done_day != Some(today) && t.start.is_some_and(|s| s as u32 >= m)).map(|t| (t.start.unwrap() as u32, t.title.clone()));
+                let event_next = events.iter().filter_map(|e| e.start.filter(|&s| s >= m).map(|s| (s, if e.title.is_empty() { t("(No title)").to_string() } else { e.title.clone() })));
+                let line = task_next.chain(event_next).min_by_key(|(s, _)| *s).map_or_else(|| t("Nothing scheduled").to_string(), |(s, title)| tr("Next: {}, {}", &[&title, &hm(s)]));
+                let g = fit_line(p, &line, reg(11.0), DIM, r.right() - 14.0 - (r.left() + 28.0));
+                p.galley(pos2(r.left() + 28.0, r.top() + 111.0 - g.size().y / 2.0), g, DIM);
             }
             1 => {
                 title(t("BATTERY"));

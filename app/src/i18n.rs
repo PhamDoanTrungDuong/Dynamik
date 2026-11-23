@@ -137,6 +137,7 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("Vietnam's National Day", "Quốc khánh Việt Nam", "越南国庆节", "Fête nationale du Vietnam"),
     ("Degrees in °F", "Độ F (°F)", "使用华氏度 (°F)", "Degrés en °F"),
     ("Rain {} mm", "Mưa {} mm", "降雨 {} 毫米", "Pluie {} mm"),
+    ("{} tasks · {} events today", "{} việc · {} sự kiện hôm nay", "今天 {} 项任务 · {} 个日程", "{} tâches · {} événements aujourd'hui"),
     ("same time", "cùng giờ", "同一时间", "même heure"),
     ("{} h", "{} giờ", "{} 小时", "{} h"),
     ("Open {}", "Mở {}", "打开{}", "Ouvrir {}"),
