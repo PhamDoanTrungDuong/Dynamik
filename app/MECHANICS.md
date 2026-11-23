@@ -373,3 +373,13 @@ of the larger "working set" is the graphics driver's shared DLLs.
   Next prayer → Prayer, Focus today → Pomodoro, Water → Water.
 - Weather: today's high and low over the forecast steps on this PC's day, the next 6 hours'
   precipitation_amount (shown from 0.1 mm), and °F as an option (fahrenheit).
+
+## Today, reworked
+- Recent notifications (up to RECENT_MAX = 20, in memory only) scroll; one row per app (group_by_app:
+  same name and id, newest first, its newest notification shown, "App · n"), with the app's logo or
+  its initial in its own colour. Text is cut by real width.
+- A row's click opens the sending app (open_app: shell:AppsFolder\<AUMID>, only for an id with no
+  quote or control character); right-click removes that app's notifications from the list.
+- This week counts today's calendar events beside the open tasks, and "Next" is the earliest timed
+  task or event still to come.
+- `--page 7 --demo` fills a screenshot with made-up notifications and events.

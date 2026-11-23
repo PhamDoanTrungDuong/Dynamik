@@ -81,7 +81,11 @@ hiện trạng thái và mở ra thành bảng công cụ nhỏ.*
   - Weather (MET Norway, đọc lại 30 phút một lần): nhiệt độ, trời, cao/thấp hôm nay, mưa 6 giờ tới,
     °C hoặc °F; thành phố chọn trong danh sách của Prayer hoặc My location.
   - Week starts on: Chủ nhật hoặc Thứ hai.
-- **Today**: thông báo gần đây và tuần của bạn.
+- **Today** (bật ở Settings › Notifications › Today page, hoặc Settings › Pages): bên trái là tối đa 20
+  thông báo gần đây, cuộn được, mỗi app một dòng có logo và số tin ("Zalo · 3"); click để mở app đã
+  gửi, click phải để xóa, Clear xóa hết. Thông báo chỉ giữ trong bộ nhớ, tắt app là mất; cần bật
+  "Show notifications". Bên phải là tuần này (ngày đầu tuần theo Settings › Widgets), số việc và sự
+  kiện Google Lịch hôm nay, và việc hoặc sự kiện kế tiếp.
 
 **Pop-up hệ thống**: âm lượng, độ sáng, Caps Lock, ngôn ngữ bàn phím, pin, Wi-Fi, tai nghe Bluetooth,
 thông báo Windows.
