@@ -296,6 +296,7 @@ struct App {
     focus_log: BTreeMap<NaiveDate, u32>,
     rounds_day: NaiveDate, // the day `rounds` counts for
     prayer_paused: Option<Instant>, // when music was paused for prayer (for "Play again after")
+    battery_news: Option<Alert>, // a battery pop-up waiting for one that needs an answer to go
     held_notice: Option<(media::Notice, u32)>, // a notification kept back during quiet focus, and how many more
     focus_acc: f64,
     last_tick: Instant,
@@ -441,7 +442,7 @@ impl App {
             // --page 2 --demo shows the Water page just after a 250 ml drink (with its Undo).
             water_log,
             last_drink: (!live && page == 2 && std::env::args().any(|a| a == "--demo")).then(|| (250, now.hour() as usize, 0, Instant::now())),
-            mode: Mode::Focus, left, running: false, rounds: 0, rounds_day: now.date(), prayer_paused: None, held_notice: None, focus_log, focus_acc: 0.0, last_tick: Instant::now(),
+            mode: Mode::Focus, left, running: false, rounds: 0, rounds_day: now.date(), prayer_paused: None, battery_news: None, held_notice: None, focus_log, focus_acc: 0.0, last_tick: Instant::now(),
             // --clips: a screenshot of the clipboard side.
             shelf, shelf_view: if !live && std::env::args().any(|a| a == "--clips") { ShelfView::Clipboard } else { ShelfView::Files },
             clips, clipboard, last_clip, copied: None,
@@ -817,20 +818,34 @@ impl App {
             self.battery = battery();
             // The original's rules (0x140056c76): a charger change first; otherwise a warning only when
             // the level crosses 21 % / 11 % going down on battery, or reaches 100 % while charging.
-            if let (true, Some((p, ac)), Some((op, oac))) = (self.s.popup_battery && self.alert.is_none(), self.battery, old) {
-                if ac != oac {
-                    if ac {
-                        self.notify(t("Charging"), t("Charger connected"), Kind::Battery(p, ac));
-                    } else {
-                        self.notify(t("Charger unplugged"), &format!("{p}%"), Kind::Battery(p, ac));
-                    }
+            if let (true, Some((p, ac)), Some((op, oac))) = (self.s.popup_battery, self.battery, old) {
+                let say = if ac != oac {
+                    Some(if ac { (t("Charging").to_string(), t("Charger connected").to_string()) } else { (t("Charger unplugged").to_string(), format!("{p}%")) })
                 } else if !ac && p < BATTERY_CRITICAL && op >= BATTERY_CRITICAL {
-                    self.notify(t("Battery critical"), t("Plug in now"), Kind::Battery(p, ac));
+                    Some((t("Battery critical").to_string(), t("Plug in now").to_string()))
                 } else if !ac && p < BATTERY_LOW && op >= BATTERY_LOW {
-                    self.notify(t("Low battery"), t("Plug in soon"), Kind::Battery(p, ac));
+                    Some((t("Low battery").to_string(), t("Plug in soon").to_string()))
                 } else if ac && p >= 100 && op < 100 {
-                    self.notify(t("Fully charged"), t("You can unplug"), Kind::Battery(p, ac));
+                    Some((t("Fully charged").to_string(), t("You can unplug").to_string()))
+                } else {
+                    None
+                };
+                if let Some((title, body)) = say {
+                    self.battery_news = Some(Alert { title, body, kind: Kind::Battery(p, ac), at: Instant::now() });
                 }
+            }
+        }
+        // Battery news isn't lost behind another pop-up: it takes the place of one that needs no
+        // answer (a volume bar, a notification…), or waits for one that does (Drank / Snooze…).
+        if self.battery_news.is_some() {
+            let passing = self.alert.as_ref().is_none_or(|a| matches!(a.kind, Kind::Hud(..) | Kind::Notice(..) | Kind::Network(_) | Kind::Bluetooth(_) | Kind::Battery(..) | Kind::About | Kind::Hint));
+            if passing {
+                let mut news = self.battery_news.take().unwrap();
+                news.at = Instant::now();
+                if self.s.sound {
+                    beep();
+                }
+                self.alert = Some(news);
             }
         }
 
