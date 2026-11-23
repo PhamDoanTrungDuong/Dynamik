@@ -57,8 +57,7 @@ const EAR_MAX: f32 = 14.0; // side margin of the pill states in 0x140056ff1
 const SPRING: (f32, f32) = (230.0, 19.0); // most changes: open, close, pop-up (a little bounce)
 const SPRING_FROM_POPUP: (f32, f32) = (110.0, 15.5); // leaving a pop-up for the pill
 const SPRING_TO_PEEK: (f32, f32) = (200.0, 29.0); // into the small peek state (no bounce)
-// Battery pop-ups (0x140056c76): warnings below 21 % and 11 %; they stay 4.5 s (timer 4 in 0x14007f665).
-const BATTERY_LOW: u8 = 21;
+// Battery pop-ups (0x140056c76): warnings below 21 % (now the chosen level, battery_low) and 11 %; they stay 4.5 s (timer 4 in 0x14007f665).
 const BATTERY_CRITICAL: u8 = 11;
 const BATTERY_POPUP_SECS: f32 = 4.5;
 // Prayer reminders (0x140002345): at prayer time 10 s (timer 4, 10000 ms), the early one 6 s (6000 ms).
@@ -824,13 +823,13 @@ impl App {
             let old = self.battery;
             self.battery = battery();
             // The original's rules (0x140056c76): a charger change first; otherwise a warning only when
-            // the level crosses 21 % / 11 % going down on battery, or reaches 100 % while charging.
+            // the level crosses the chosen low level (the original's 21 %) / 11 % going down on battery, or reaches 100 % while charging.
             if let (true, Some((p, ac)), Some((op, oac))) = (self.s.popup_battery, self.battery, old) {
                 let say = if ac != oac {
                     Some(if ac { (t("Charging").to_string(), t("Charger connected").to_string()) } else { (t("Charger unplugged").to_string(), format!("{p}%")) })
                 } else if !ac && p < BATTERY_CRITICAL && op >= BATTERY_CRITICAL {
                     Some((t("Battery critical").to_string(), t("Plug in now").to_string()))
-                } else if !ac && p < BATTERY_LOW && op >= BATTERY_LOW {
+                } else if !ac && p <= self.s.battery_low && op > self.s.battery_low {
                     Some((t("Low battery").to_string(), t("Plug in soon").to_string()))
                 } else if ac && p >= 100 && op < 100 {
                     Some((t("Fully charged").to_string(), t("You can unplug").to_string()))

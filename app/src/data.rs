@@ -23,6 +23,7 @@ pub fn goal_step(ml: u32) -> u32 {
 pub const GLASS_ML: u32 = 250; // the Water page's "+250 ml": an ordinary glass
 pub const CLIP_MAX_FREE: usize = 5;
 pub const SNOOZES: [u32; 3] = [5, 10, 15];
+pub const BATTERY_LOWS: [u8; 3] = [15, 20, 30]; // the "Low battery" levels to choose from
 pub const PRAYER_EARLY_MIN: u32 = 10;
 pub const WATER_SNOOZE_MIN: u32 = 10; // 0x1400583ab: snooze = now + 10, capped at 23:59
 pub const REFILL_FRACTION: f32 = 0.75; // 0x140002222: refill when bottle < 0.75 x one drink
@@ -134,6 +135,7 @@ pub struct Settings {
     pub clipboard_keep: bool,
     pub shelf_clear: bool,
     pub popup_battery: bool,
+    pub battery_low: u8, // "Low battery" at or under this % (15, 20 or 30)
     pub popup_wifi: bool,
     pub hide_fullscreen: bool,
     pub welcomed: bool, // the first-start hint has been shown
@@ -233,6 +235,7 @@ impl Settings {
             clipboard_keep: get(&m, "clipboard_keep", false),
             shelf_clear: get(&m, "shelf_clear", false),
             popup_battery: get(&m, "popup_battery", true),
+            battery_low: Some(get(&m, "battery_low", 20u8)).filter(|v| BATTERY_LOWS.contains(v)).unwrap_or(20),
             popup_wifi: get(&m, "popup_wifi", true),
             hide_fullscreen: get(&m, "hide_fullscreen", true),
             welcomed: get(&m, "welcomed", false),
@@ -308,6 +311,7 @@ impl Settings {
             format!("clipboard_keep={}", s.clipboard_keep),
             format!("shelf_clear={}", s.shelf_clear),
             format!("popup_battery={}", s.popup_battery),
+            format!("battery_low={}", s.battery_low),
             format!("popup_wifi={}", s.popup_wifi),
             format!("hide_fullscreen={}", s.hide_fullscreen),
             format!("welcomed={}", s.welcomed),

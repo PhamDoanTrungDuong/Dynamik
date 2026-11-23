@@ -143,6 +143,7 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("Now playing — when the song changes", "Đang phát — khi đổi bài", "正在播放 — 切换歌曲时", "Lecture en cours — au changement de morceau"),
     ("Headset battery low · {}%", "Pin tai nghe yếu · {}%", "耳机电量低 · {}%", "Batterie du casque faible · {} %"),
     ("Also when it disconnects or runs low", "Cả khi ngắt kết nối hoặc pin yếu", "断开连接或电量低时也提醒", "Aussi à la déconnexion ou batterie faible"),
+    ("Low battery at", "Báo pin yếu khi còn", "低电量提醒阈值", "Batterie faible à"),
     ("same time", "cùng giờ", "同一时间", "même heure"),
     ("{} h", "{} giờ", "{} 小时", "{} h"),
     ("Open {}", "Mở {}", "打开{}", "Ouvrir {}"),
