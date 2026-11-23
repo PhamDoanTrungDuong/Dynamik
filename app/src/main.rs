@@ -2329,9 +2329,12 @@ impl App {
                 title(t("WORLD CLOCK"));
                 for (k, idx) in [self.s.widget_city1, self.s.widget_city2].into_iter().enumerate() {
                     let (name, _, _) = WORLD[idx.min(WORLD.len() - 1)];
-                    let y = r.top() + 50.0 + k as f32 * 40.0;
+                    let y = r.top() + 46.0 + k as f32 * 40.0;
+                    let there = world_time(idx);
                     p.text(pos2(r.left() + 14.0, y), Align2::LEFT_CENTER, name, reg(13.0), DIM);
-                    p.text(pos2(r.right() - 14.0, y), Align2::RIGHT_CENTER, world_time(idx).format("%H:%M").to_string(), bold(22.0), WHITE);
+                    // How far that clock is from this PC's, e.g. "+1 h", "−6 h", "same time".
+                    p.text(pos2(r.left() + 14.0, y + 15.0), Align2::LEFT_CENTER, offset_text((there - self.now).num_minutes()), reg(10.0), FAINT);
+                    p.text(pos2(r.right() - 14.0, y + 6.0), Align2::RIGHT_CENTER, there.format("%H:%M").to_string(), bold(22.0), WHITE);
                 }
             }
             5 => {
@@ -3760,6 +3763,17 @@ fn summer(rule: Dst, std: f64, utc: NaiveDateTime) -> bool {
     }
 }
 
+/// A clock's distance from this PC's, rounded to the quarter hour: "+1 h", "−5:30 h", "same time".
+fn offset_text(minutes: i64) -> String {
+    let q = ((minutes as f64 / 15.0).round() as i64) * 15;
+    if q == 0 {
+        return t("same time").to_string();
+    }
+    let sign = if q > 0 { "+" } else { "−" };
+    let (h, m) = (q.abs() / 60, q.abs() % 60);
+    if m == 0 { tr("{} h", &[&format!("{sign}{h}")]) } else { tr("{} h", &[&format!("{sign}{h}:{m:02}")]) }
+}
+
 /// The next day of "My own date": "DD/MM" comes every year, "DD/MM/YYYY" once (None once past,
 /// or when it doesn't read as a date).
 fn my_date(today: NaiveDate, text: &str) -> Option<NaiveDate> {
@@ -4125,6 +4139,17 @@ mod tests {
             let got = next_event(d(2031, 1, 1), ev).unwrap();
             assert!(prayer::hijri(got).1 == m && prayer::hijri(got).2 == dd && got < d(2032, 1, 1), "{ev}: {got}");
         }
+    }
+
+    #[test]
+    fn clock_offsets_read_plainly() {
+        let _lock = i18n::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        i18n::set(0);
+        assert_eq!(offset_text(0), "same time");
+        assert_eq!(offset_text(59), "+1 h"); // a clock read a second apart still rounds right
+        assert_eq!(offset_text(-360), "−6 h");
+        assert_eq!(offset_text(-150), "−2:30 h");
+        assert_eq!(offset_text(330), "+5:30 h");
     }
 
     #[test]
