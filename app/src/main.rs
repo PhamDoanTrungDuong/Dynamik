@@ -2191,6 +2191,31 @@ impl App {
         for (rect, kind) in [(a, self.s.widget_left), (b, self.s.widget_right)] {
             p.rect_filled(rect, 14.0, CARD);
             self.widget(&p, rect, kind);
+            self.widget_opens(ui, rect, kind);
+        }
+    }
+
+    /// A widget with a page behind it opens that page when clicked: the week → To-do, the next
+    /// prayer → Prayer, focus → Pomodoro, water → Water (if that page is shown).
+    fn widget_opens(&mut self, ui: &mut egui::Ui, rect: Rect, kind: usize) {
+        let to = match kind {
+            0 => 4,
+            2 => 5,
+            3 => 1,
+            7 => 2,
+            _ => return,
+        };
+        if !self.order().contains(&to) {
+            return;
+        }
+        let name = tr("Open {}", &[&t(PAGES[to])]);
+        let resp = ui.interact(rect, ui.id().with(("widget", rect.left() as i32)), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &name));
+        if resp.hovered() {
+            ui.painter().rect_stroke(rect, 14.0, Stroke::new(1.0_f32, Color32::from_gray(60)), egui::StrokeKind::Inside);
+        }
+        if resp.clicked() {
+            self.page = to;
         }
     }
 
@@ -2220,6 +2245,7 @@ impl App {
         }
         p.rect_filled(b, 14.0, CARD);
         self.widget(&p, b, 0);
+        self.widget_opens(ui, b, 0);
     }
 
     fn widget(&self, p: &egui::Painter, r: Rect, kind: usize) {
