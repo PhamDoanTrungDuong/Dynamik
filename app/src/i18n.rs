@@ -135,6 +135,11 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("Christmas", "Giáng sinh", "圣诞节", "Noël"),
     ("Lunar New Year (Tết)", "Tết Nguyên Đán", "春节", "Nouvel An lunaire (Têt)"),
     ("Vietnam's National Day", "Quốc khánh Việt Nam", "越南国庆节", "Fête nationale du Vietnam"),
+    ("My own date", "Ngày của tôi", "我的日子", "Ma date"),
+    ("Set the date in Settings › Widgets", "Đặt ngày trong Cài đặt › Tiện ích", "请在 设置 › 小组件 中设置日期", "Choisissez la date dans Réglages › Widgets"),
+    ("Name — what you count down to", "Tên — điều bạn đang đếm ngày", "名称 — 你在倒数什么", "Nom — ce que vous attendez"),
+    ("Date — DD/MM every year, or DD/MM/YYYY once", "Ngày — DD/MM hằng năm, hoặc DD/MM/YYYY một lần", "日期 — 每年 DD/MM，或一次 DD/MM/YYYY", "Date — JJ/MM chaque année, ou JJ/MM/AAAA une fois"),
+    ("Birthday, exam…", "Sinh nhật, kỳ thi…", "生日、考试…", "Anniversaire, examen…"),
     // Widgets
     ("This week", "Tuần này", "本周", "Cette semaine"),
     ("Battery", "Pin", "电池", "Batterie"),

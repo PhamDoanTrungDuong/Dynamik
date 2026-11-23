@@ -156,6 +156,8 @@ pub struct Settings {
     pub widget_city1: usize,
     pub widget_city2: usize,
     pub widget_event: usize,
+    pub widget_my_name: String, // the Countdown's own event: its name...
+    pub widget_my_date: String, // ...and date, "DD/MM" (every year) or "DD/MM/YYYY"
     pub widget_left: usize,
     pub widget_right: usize,
     pub week_monday: bool,
@@ -250,6 +252,8 @@ impl Settings {
             widget_city1: get(&m, "widget_city1", 5usize),
             widget_city2: get(&m, "widget_city2", 13usize),
             widget_event: get(&m, "widget_event", 1usize),
+            widget_my_name: m.get("widget_my_name").cloned().unwrap_or_default(),
+            widget_my_date: m.get("widget_my_date").cloned().unwrap_or_default(),
             widget_left: get(&m, "widget_left", 0usize),
             widget_right: get(&m, "widget_right", 1usize),
             week_monday: get(&m, "week_monday", false),
@@ -320,6 +324,8 @@ impl Settings {
             format!("widget_city1={}", s.widget_city1),
             format!("widget_city2={}", s.widget_city2),
             format!("widget_event={}", s.widget_event),
+            format!("widget_my_name={}", s.widget_my_name.replace(['\n', '\r'], " ")),
+            format!("widget_my_date={}", s.widget_my_date.trim()),
             format!("widget_left={}", s.widget_left),
             format!("widget_right={}", s.widget_right),
             format!("week_monday={}", s.week_monday),

@@ -101,7 +101,8 @@ const SLEEP_GAP_SECS: f64 = 5.0; // a gap this long between looks while Pomodoro
 const RESET_CONFIRM_SECS: f32 = 3.0;
 const MOON: [&str; 8] = ["New Moon", "Waxing Crescent", "First Quarter", "Waxing Gibbous", "Full Moon", "Waning Gibbous", "Last Quarter", "Waning Crescent"];
 // Countdown events. Settings keep an event's place in this list, so new ones go at the end.
-const EVENTS: [&str; 8] = ["New Year", "Ramadan", "Eid al-Fitr", "Eid al-Adha", "Indonesia's Independence Day", "Christmas", "Lunar New Year (Tết)", "Vietnam's National Day"];
+const EVENTS: [&str; 9] = ["New Year", "Ramadan", "Eid al-Fitr", "Eid al-Adha", "Indonesia's Independence Day", "Christmas", "Lunar New Year (Tết)", "Vietnam's National Day", "My own date"];
+const MY_EVENT: usize = 8; // "My own date": a name and date of the person's choosing
 // The first day of the lunar year (Chinese calendar). shortcut: Vietnam's Tết is the same day in
 // these years as far as known (it has differed by a day, as in 2007); extend the table past 2040.
 const LUNAR_NEW_YEAR: [(i32, u32, u32); 15] = [
@@ -2320,13 +2321,22 @@ impl App {
             6 => {
                 title(t("COUNTDOWN"));
                 let ev = self.s.widget_event.min(EVENTS.len() - 1);
-                let (big, small) = match next_event(today, ev) {
-                    Some(d) if d == today => (t("Today").to_string(), t(EVENTS[ev]).to_string()),
-                    Some(d) => ((d - today).num_days().to_string(), tr("days to {}", &[&t(EVENTS[ev])])),
-                    None => ("—".into(), t(EVENTS[ev]).to_string()),
+                // "My own date" counts to the person's date, under the name they gave it.
+                let (when, name) = if ev == MY_EVENT {
+                    let name = self.s.widget_my_name.trim();
+                    (my_date(today, &self.s.widget_my_date), if name.is_empty() { t(EVENTS[ev]).to_string() } else { name.to_string() })
+                } else {
+                    (next_event(today, ev), t(EVENTS[ev]).to_string())
+                };
+                let (big, small) = match when {
+                    Some(d) if d == today => (t("Today").to_string(), name),
+                    Some(d) => ((d - today).num_days().to_string(), tr("days to {}", &[&name])),
+                    None if ev == MY_EVENT => ("—".into(), t("Set the date in Settings › Widgets").to_string()),
+                    None => ("—".into(), name),
                 };
                 p.text(pos2(r.left() + 14.0, r.top() + 60.0), Align2::LEFT_CENTER, big, bold(32.0), WHITE);
-                p.text(pos2(r.left() + 14.0, r.top() + 96.0), Align2::LEFT_CENTER, small, reg(12.0), DIM);
+                let g = fit_line(p, &small, reg(12.0), DIM, r.width() - 28.0);
+                p.galley(pos2(r.left() + 14.0, r.top() + 96.0 - g.size().y / 2.0), g, DIM);
             }
             WEATHER_WIDGET => self.weather_widget(p, r),
             _ => {
@@ -2683,6 +2693,10 @@ impl App {
                     combo(ui, "World clock, first city", &mut s.widget_city1, &cities);
                     combo(ui, "World clock, second city", &mut s.widget_city2, &cities);
                     combo(ui, "Countdown to", &mut s.widget_event, &EVENTS);
+                    if s.widget_event == MY_EVENT {
+                        text_row(ui, "Name — what you count down to", &mut s.widget_my_name, t("Birthday, exam…"));
+                        text_row(ui, "Date — DD/MM every year, or DD/MM/YYYY once", &mut s.widget_my_date, "31/12");
+                    }
                     let mut wm = s.week_monday as usize;
                     if combo(ui, "Week starts on", &mut wm, &["Sunday", "Monday"]) {
                         s.week_monday = wm == 1;
@@ -3561,6 +3575,18 @@ fn move_button(ui: &mut egui::Ui, text: &str, what: &str) -> bool {
     resp.clicked()
 }
 
+/// A row with a one-line text box; true when it changed.
+fn text_row(ui: &mut egui::Ui, label: &str, v: &mut String, hint: &str) -> bool {
+    let mut changed = false;
+    row(ui, label, |ui| {
+        let name = t(label).split(" — ").next().unwrap_or(label).to_string();
+        let resp = ui.add(egui::TextEdit::singleline(v).hint_text(hint).desired_width(170.0).background_color(BTN).margin(egui::Margin::symmetric(8, 5)));
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, &name));
+        changed = resp.changed();
+    });
+    changed
+}
+
 /// A row with a hidden text box for a secret; true when it changed.
 fn secret_row(ui: &mut egui::Ui, label: &str, v: &mut String) -> bool {
     let mut changed = false;
@@ -3696,6 +3722,18 @@ fn summer(rule: Dst, std: f64, utc: NaiveDateTime) -> bool {
         Dst::Eu => utc >= last_sunday(y, 3).and_hms_opt(1, 0, 0).unwrap() && utc < last_sunday(y, 10).and_hms_opt(1, 0, 0).unwrap(),
         Dst::Us => utc >= at(nth_sunday(y, 3, 2), 2.0) && utc < at(nth_sunday(y, 11, 1), 1.0),
         Dst::Au => utc >= at(nth_sunday(y, 10, 1), 2.0) || utc < at(nth_sunday(y, 4, 1), 2.0),
+    }
+}
+
+/// The next day of "My own date": "DD/MM" comes every year, "DD/MM/YYYY" once (None once past,
+/// or when it doesn't read as a date).
+fn my_date(today: NaiveDate, text: &str) -> Option<NaiveDate> {
+    let parts: Vec<u32> = text.trim().split(['/', '-', '.']).map(|p| p.trim().parse().ok()).collect::<Option<_>>()?;
+    match parts[..] {
+        // This year's if still to come, else the next year that has it (29/02: the next leap year).
+        [d, m] => (0..=8).filter_map(|k| NaiveDate::from_ymd_opt(today.year() + k, m, d)).find(|&x| x >= today),
+        [d, m, y] => NaiveDate::from_ymd_opt(y as i32, m, d).filter(|&x| x >= today),
+        _ => None,
     }
 }
 
@@ -4031,6 +4069,13 @@ mod tests {
         assert_eq!(next_event(d(2026, 11, 23), 6), Some(d(2027, 2, 6))); // Tết
         assert_eq!(next_event(d(2026, 11, 23), 7), Some(d(2027, 9, 2))); // 2/9
         assert_eq!(next_event(d(2041, 3, 1), 6), None); // past the Tết table: "—", not a wrong date
+        // My own date: every year, once, a leap day, and nonsense.
+        assert_eq!(my_date(d(2026, 11, 23), "15/03"), Some(d(2027, 3, 15)));
+        assert_eq!(my_date(d(2026, 11, 23), "23/11"), Some(d(2026, 11, 23)));
+        assert_eq!(my_date(d(2026, 11, 23), "01/06/2027"), Some(d(2027, 6, 1)));
+        assert_eq!(my_date(d(2026, 11, 23), "01/06/2026"), None);
+        assert_eq!(my_date(d(2026, 11, 23), "29/02"), Some(d(2028, 2, 29)));
+        assert_eq!((my_date(d(2026, 11, 23), ""), my_date(d(2026, 11, 23), "31/02"), my_date(d(2026, 11, 23), "soon")), (None, None, None));
         // The worked-out calendar lands within a day of every date in the tables...
         let first = |from: NaiveDate, m: u32, dd: u32| (0..400).map(|k| from + Duration::days(k)).find(|&x| prayer::hijri(x).1 == m && prayer::hijri(x).2 == dd).unwrap();
         for (table, m, dd) in [(&RAMADAN, 9, 1), (&EID_FITR, 10, 1), (&EID_ADHA, 12, 10)] {
