@@ -2235,13 +2235,28 @@ impl App {
                 self.recent.clear();
             }
             let now = Utc::now().timestamp();
-            for (k, (ts, (app, title, body, _))) in self.recent.iter().take(3).enumerate() {
-                let y = a.top() + 40.0 + k as f32 * 30.0;
-                p.text(pos2(a.left() + 14.0, y - 7.0), Align2::LEFT_CENTER, ellipsize(app, 20), reg(10.0), DIM);
-                p.text(pos2(a.right() - 14.0, y - 7.0), Align2::RIGHT_CENTER, ago(now - ts), reg(10.0), DIM);
-                let line = if self.s.notification_preview && !body.is_empty() { format!("{title}: {body}") } else { title.clone() };
-                p.text(pos2(a.left() + 14.0, y + 7.0), Align2::LEFT_CENTER, ellipsize(&line, 26), bold(12.0), WHITE);
-            }
+            // All of them (up to RECENT_MAX), scrolling; text cut by real width.
+            let list = Rect::from_min_max(pos2(a.left() + 4.0, a.top() + 26.0), pos2(a.right() - 4.0, a.bottom() - 6.0));
+            self.scroll_zone = Some((list, true));
+            let (recent, preview) = (self.recent.clone(), self.s.notification_preview);
+            ui.allocate_new_ui(egui::UiBuilder::new().max_rect(list), |ui| {
+                egui::ScrollArea::vertical().id_salt("today-recent").auto_shrink(false).show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    for (ts, (app, title, body, _)) in &recent {
+                        let (row, _) = ui.allocate_exact_size(vec2(list.width() - 8.0, 30.0), Sense::hover());
+                        let p = ui.painter();
+                        let (x, right) = (row.left() + 10.0, row.right() - 6.0);
+                        let when = p.layout_no_wrap(ago(now - ts), reg(10.0), DIM);
+                        let ww = when.size().x;
+                        p.galley(pos2(right - ww, row.top() + 8.0 - when.size().y / 2.0), when, DIM);
+                        let who = fit_line(p, app, reg(10.0), DIM, right - x - ww - 8.0);
+                        p.galley(pos2(x, row.top() + 8.0 - who.size().y / 2.0), who, DIM);
+                        let line = if preview && !body.is_empty() { format!("{title}: {body}") } else { title.clone() };
+                        let said = fit_line(p, &line, bold(12.0), WHITE, right - x);
+                        p.galley(pos2(x, row.top() + 22.0 - said.size().y / 2.0), said, WHITE);
+                    }
+                });
+            });
         }
         p.rect_filled(b, 14.0, CARD);
         self.widget(&p, b, 0);
@@ -3911,7 +3926,14 @@ const DEMO_ANSWER: &str = "Sunlight is made of every colour. Air scatters short 
 /// Made-up notifications for checking the Today page's look (`--page 7 --demo`).
 fn demo_recent() -> Vec<(i64, media::Notice)> {
     let now = Utc::now().timestamp();
-    [("Messenger", "Lan", "See you at 7"), ("Outlook", "Weekly report", "Attached is this week's report"), ("Zalo", "Minh", "Ok")]
+    [
+        ("Messenger", "Lan", "See you at 7"),
+        ("Zalo", "Nhóm: TRI THỨC CHỈ ĐẠO CHUNG VÀ PHỐI HỢP", "Anh Tám: Mai họp lúc 9h nhé mọi người"),
+        ("Outlook", "Weekly report", "Attached is this week's report"),
+        ("Zalo", "Minh", "Ok"),
+        ("Zalo", "Nhóm: TRI THỨC CHỈ ĐẠO CHUNG VÀ PHỐI HỢP", "Chị Hoa: Đã gửi file"),
+        ("Teams", "Standup", "Starting in 5 minutes"),
+    ]
         .iter()
         .enumerate()
         .map(|(k, (a, t, b))| (now - k as i64 * 400, (a.to_string(), t.to_string(), b.to_string(), String::new())))
