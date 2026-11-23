@@ -135,6 +135,8 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("Christmas", "Giáng sinh", "圣诞节", "Noël"),
     ("Lunar New Year (Tết)", "Tết Nguyên Đán", "春节", "Nouvel An lunaire (Têt)"),
     ("Vietnam's National Day", "Quốc khánh Việt Nam", "越南国庆节", "Fête nationale du Vietnam"),
+    ("Degrees in °F", "Độ F (°F)", "使用华氏度 (°F)", "Degrés en °F"),
+    ("Rain {} mm", "Mưa {} mm", "降雨 {} 毫米", "Pluie {} mm"),
     ("Open {}", "Mở {}", "打开{}", "Ouvrir {}"),
     ("My own date", "Ngày của tôi", "我的日子", "Ma date"),
     ("Set the date in Settings › Widgets", "Đặt ngày trong Cài đặt › Tiện ích", "请在 设置 › 小组件 中设置日期", "Choisissez la date dans Réglages › Widgets"),

@@ -453,7 +453,7 @@ impl App {
             weather: if live {
                 online::weather_watch(weather_place)
             } else {
-                let demo = std::env::args().skip_while(|a| a != "--weather").nth(1).map(|symbol| online::Weather { temp: 28.0, symbol });
+                let demo = std::env::args().skip_while(|a| a != "--weather").nth(1).map(|symbol| online::Weather { temp: 28.0, symbol, high: Some(31.0), low: Some(24.0), rain_6h: Some(2.4) });
                 std::sync::Arc::new(std::sync::Mutex::new(demo))
             },
             rates: Default::default(), last_bright: 0, recent: if shot_demo { demo_recent() } else { Vec::new() }, network_change: None, s,
@@ -2401,8 +2401,16 @@ impl App {
         match w {
             Some(w) => {
                 weather_icon(p, pos2(r.left() + 40.0, r.top() + 66.0), &w.symbol, sky);
-                p.text(pos2(r.left() + 78.0, r.top() + 58.0), Align2::LEFT_CENTER, format!("{:.0}°", w.temp), bold(32.0), WHITE);
+                let deg = |c: f64| if self.s.fahrenheit { format!("{:.0}°", c * 9.0 / 5.0 + 32.0) } else { format!("{c:.0}°") };
+                p.text(pos2(r.left() + 78.0, r.top() + 58.0), Align2::LEFT_CENTER, deg(w.temp), bold(32.0), WHITE);
                 p.text(pos2(r.left() + 78.0, r.top() + 86.0), Align2::LEFT_CENTER, t(label), reg(13.0), WHITE);
+                // Today's high and low, and the rain to come in the next 6 hours (when there is some).
+                if let (Some(hi), Some(lo)) = (w.high, w.low) {
+                    p.text(pos2(r.right() - 14.0, r.top() + 52.0), Align2::RIGHT_CENTER, format!("↑{} ↓{}", deg(hi), deg(lo)), reg(12.0), WHITE);
+                }
+                if let Some(mm) = w.rain_6h.filter(|&mm| mm >= 0.1) {
+                    p.text(pos2(r.right() - 14.0, r.top() + 70.0), Align2::RIGHT_CENTER, tr("Rain {} mm", &[&format!("{mm:.1}")]), reg(11.0), Color32::from_rgb(147, 197, 253));
+                }
             }
             None => {
                 let why = if self.s.weather_city == prayer::here_index() && (self.s.prayer_lat, self.s.prayer_lon) == (0.0, 0.0) { t("Find my location in Settings") } else { t("Getting the weather…") };
@@ -2714,6 +2722,7 @@ impl App {
                             .collect();
                         let refs: Vec<&str> = names.iter().map(|n| n.as_str()).collect();
                         combo(ui, "Weather for", &mut s.weather_city, &refs);
+                        switch_row(ui, "Degrees in °F", &mut s.fahrenheit);
                     }
                     let cities: Vec<&str> = WORLD.iter().map(|w| w.0).collect();
                     combo(ui, "World clock, first city", &mut s.widget_city1, &cities);

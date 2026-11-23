@@ -98,6 +98,9 @@ fn json_str(s: &str) -> String {
 pub struct Weather {
     pub temp: f64,      // °C now
     pub symbol: String, // MET symbol for the next hour, e.g. "partlycloudy_day"
+    pub high: Option<f64>, // the highest and lowest forecast °C for the rest of today (this PC's day)
+    pub low: Option<f64>,
+    pub rain_6h: Option<f64>, // mm of rain (or snow, as water) expected in the next 6 hours
 }
 
 /// Keeps the weather for `place` fresh (every 30 minutes, at once when the place changes).
@@ -130,13 +133,33 @@ pub fn weather_watch(place: Arc<Mutex<Option<(f64, f64)>>>) -> Arc<Mutex<Option<
     shared
 }
 
-/// The first forecast step: its temperature and the next hour's symbol.
+/// The first forecast step (its temperature, the next hour's symbol, the next 6 hours' rain), and
+/// the highest and lowest of today's later steps.
 pub fn parse_weather(body: &str) -> Option<Weather> {
+    parse_weather_on(body, chrono::Local::now().date_naive())
+}
+
+fn parse_weather_on(body: &str, today: chrono::NaiveDate) -> Option<Weather> {
+    use crate::media::{json_number, json_string};
     let series = &body[body.find("\"timeseries\"")?..];
-    let temp = crate::media::json_number(series, "air_temperature")?;
+    let temp = json_number(series, "air_temperature")?;
     let next = &series[series.find("\"next_1_hours\"").or_else(|| series.find("\"next_6_hours\""))?..];
-    let symbol = crate::media::json_string(next, "symbol_code")?;
-    Some(Weather { temp, symbol })
+    let symbol = json_string(next, "symbol_code")?;
+    // Each step starts with its "time"; the first temperature after it is that step's.
+    let steps: Vec<&str> = series.split("\"time\"").skip(1).collect();
+    let first = steps.first().copied().unwrap_or("");
+    let rain_6h = first.find("\"next_6_hours\"").and_then(|i| json_number(&first[i..], "precipitation_amount"));
+    let today_temps: Vec<f64> = steps
+        .iter()
+        .filter_map(|s| {
+            let when = json_string(&format!("\"time\"{s}"), "time")?;
+            let utc = chrono::DateTime::parse_from_rfc3339(&when).ok()?;
+            (utc.with_timezone(&chrono::Local).date_naive() == today).then(|| json_number(s, "air_temperature")).flatten()
+        })
+        .collect();
+    let high = today_temps.iter().copied().reduce(f64::max);
+    let low = today_temps.iter().copied().reduce(f64::min);
+    Some(Weather { temp, symbol, high, low, rain_6h })
 }
 
 /// Rates against the US dollar, fetched on first use and kept for 12 hours.
@@ -223,6 +246,14 @@ mod tests {
         assert_eq!(w.temp, 27.4);
         assert_eq!(w.symbol, "partlycloudy_day");
         assert!(parse_weather("{}").is_none());
+        // High and low over that day's steps, and the next 6 hours' rain.
+        let day = chrono::DateTime::parse_from_rfc3339("2026-11-21T03:30:00Z").unwrap().with_timezone(&chrono::Local).date_naive();
+        let body = r#"{"properties":{"timeseries":[
+            {"time":"2026-11-21T03:00:00Z","data":{"instant":{"details":{"air_temperature":27.4}},"next_1_hours":{"summary":{"symbol_code":"rain"}},"next_6_hours":{"summary":{"symbol_code":"rain"},"details":{"precipitation_amount":2.5}}}},
+            {"time":"2026-11-21T04:00:00Z","data":{"instant":{"details":{"air_temperature":30.1}}}},
+            {"time":"2026-11-21T05:00:00Z","data":{"instant":{"details":{"air_temperature":25.0}}}}]}}"#;
+        let w = parse_weather_on(body, day).unwrap();
+        assert_eq!((w.high, w.low, w.rain_6h), (Some(30.1), Some(25.0), Some(2.5)));
     }
 
     #[test]
@@ -254,7 +285,11 @@ mod tests {
         assert!((-40.0..60.0).contains(&w.temp) && !w.symbol.is_empty(), "{} {}", w.temp, w.symbol);
         let rates = parse_rates(&get("https://open.er-api.com/v6/latest/USD").expect("rates answered"));
         assert!(rates["VND"] > 10_000.0 && rates["EUR"] < 2.0, "{:?} {:?}", rates.get("VND"), rates.get("EUR"));
-        println!("Hanoi now: {} °C, {}; 1 USD = {} VND", w.temp, w.symbol, rates["VND"]);
+        // Later today the high is at least now's and the low at most (unless the day is nearly over).
+        if let (Some(hi), Some(lo)) = (w.high, w.low) {
+            assert!(hi >= lo && (-40.0..60.0).contains(&hi), "{hi} {lo}");
+        }
+        println!("Hanoi now: {} °C, {}; today {:?}..{:?}, rain 6 h {:?} mm; 1 USD = {} VND", w.temp, w.symbol, w.low, w.high, w.rain_6h, rates["VND"]);
     }
 
     /// Gemini answers a made-up key with "not valid", which proves the request itself is well formed.
