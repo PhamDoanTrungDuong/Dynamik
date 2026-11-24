@@ -270,6 +270,8 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("It will wait here, ready to paste again", "Nó sẽ nằm đây, sẵn sàng để dán lại", "它会留在这里，随时再次粘贴", "Il vous attendra ici, prêt à être recollé"),
     ("Copied", "Đã chép", "已复制", "Copié"),
     ("Copy", "Chép", "复制", "Copier"),
+    ("Couldn't change Start with Windows", "Không đổi được Khởi động cùng Windows", "无法更改开机启动", "Impossible de modifier le démarrage avec Windows"),
+    ("Windows didn't allow it — try again", "Windows không cho phép — hãy thử lại", "Windows 不允许 — 请重试", "Windows ne l'a pas permis — réessayez"),
     ("Previous", "Bài trước", "上一首", "Précédent"),
     ("Play", "Phát", "播放", "Lecture"),
     ("Lyrics", "Lời bài hát", "歌词", "Paroles"),

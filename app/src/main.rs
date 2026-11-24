@@ -420,6 +420,21 @@ impl App {
             s.welcomed = true;
             s.save();
         }
+        // "Start with Windows" shows what Windows will really do (Task Manager can turn it off), and an
+        // entry left pointing at an exe that is gone (moved, reinstalled) points at this one again.
+        if live {
+            let real = startup_state();
+            let was = s.startup;
+            s.startup = real.as_ref().is_some_and(|(_, approved)| *approved);
+            if let Some((path, true)) = &real {
+                if !std::path::Path::new(path).exists() {
+                    set_startup(true);
+                }
+            }
+            if s.startup != was {
+                s.save();
+            }
+        }
         // Screenshots never read the secrets.
         let secret = |name: &str| if live { read_secret(name) } else { String::new() };
         let ical_text = secret(ICAL_FILE);
@@ -2952,8 +2967,9 @@ impl App {
             });
         });
         if self.s != before {
-            if self.s.startup != before.startup {
-                set_startup(self.s.startup);
+            if self.s.startup != before.startup && !set_startup(self.s.startup) {
+                self.s.startup = before.startup; // Windows didn't take it: show it as it really is
+                self.alert = Some(Alert { title: t("Couldn't change Start with Windows").into(), body: t("Windows didn't allow it — try again").into(), kind: Kind::Hint, at: Instant::now() });
             }
             if self.s.language != before.language {
                 i18n::set(self.s.language);
@@ -2989,8 +3005,11 @@ impl eframe::App for App {
         if matches!(pick, tray::STARTUP | tray::MASCOT | tray::MINIMAL) {
             match pick {
                 tray::STARTUP => {
-                    self.s.startup = !self.s.startup;
-                    set_startup(self.s.startup);
+                    if set_startup(!self.s.startup) {
+                        self.s.startup = !self.s.startup;
+                    } else {
+                        self.alert = Some(Alert { title: t("Couldn't change Start with Windows").into(), body: t("Windows didn't allow it — try again").into(), kind: Kind::Hint, at: Instant::now() });
+                    }
                 }
                 tray::MASCOT => self.s.mascot = !self.s.mascot,
                 _ => self.s.minimal = !self.s.minimal,
@@ -4345,17 +4364,48 @@ fn beep() {
     unsafe { windows_sys::Win32::System::Diagnostics::Debug::MessageBeep(0) };
 }
 
-fn set_startup(on: bool) {
+const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+// Where Task Manager › Startup keeps its own on/off for the same entry.
+const APPROVED_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+
+/// Runs `reg` with no window; its output when it worked.
+fn run_reg(args: &[&str]) -> Option<String> {
     use std::os::windows::process::CommandExt;
-    let key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
-    let mut c = std::process::Command::new("reg");
+    let out = std::process::Command::new("reg").args(args).creation_flags(0x0800_0000).output().ok()?; // CREATE_NO_WINDOW
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// Turns starting with Windows on (for this exe) or off; false when Windows wouldn't take it.
+fn set_startup(on: bool) -> bool {
     if on {
         let exe = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default();
-        c.args(["add", key, "/v", "MyNotch", "/t", "REG_SZ", "/d", &format!("\"{exe}\""), "/f"]);
+        // An earlier "off" from Task Manager would keep it from starting, so that goes too.
+        let _ = run_reg(&["delete", APPROVED_KEY, "/v", "MyNotch", "/f"]);
+        run_reg(&["add", RUN_KEY, "/v", "MyNotch", "/t", "REG_SZ", "/d", &format!("\"{exe}\""), "/f"]).is_some()
     } else {
-        c.args(["delete", key, "/v", "MyNotch", "/f"]);
+        run_reg(&["delete", RUN_KEY, "/v", "MyNotch", "/f"]).is_some() || startup_state().is_none()
     }
-    let _ = c.creation_flags(0x0800_0000).status(); // CREATE_NO_WINDOW
+}
+
+/// What Windows will really do at sign-in: the exe it starts, and whether Task Manager lets it.
+/// None when it isn't set to start at all.
+fn startup_state() -> Option<(String, bool)> {
+    let run = run_reg(&["query", RUN_KEY, "/v", "MyNotch"])?;
+    let path = startup_path(&run)?;
+    let approved = run_reg(&["query", APPROVED_KEY, "/v", "MyNotch"]).is_none_or(|q| startup_approved(&q));
+    Some((path, approved))
+}
+
+/// The exe path out of `reg query` for the Run value ("    MyNotch    REG_SZ    "C:\…\notch.exe"").
+fn startup_path(query: &str) -> Option<String> {
+    let line = query.lines().find(|l| l.contains("REG_SZ"))?;
+    Some(line.split_once("REG_SZ")?.1.trim().trim_matches('"').to_string())
+}
+
+/// Task Manager's own switch, out of `reg query`: an entry whose first byte is 03 is turned off.
+fn startup_approved(query: &str) -> bool {
+    let Some(line) = query.lines().find(|l| l.contains("REG_BINARY")) else { return true };
+    !line.split_once("REG_BINARY").is_some_and(|(_, hex)| hex.trim().to_ascii_uppercase().starts_with("03"))
 }
 
 #[cfg(test)]
@@ -4390,6 +4440,17 @@ mod tests {
             let got = next_event(d(2031, 1, 1), ev).unwrap();
             assert!(prayer::hijri(got).1 == m && prayer::hijri(got).2 == dd && got < d(2032, 1, 1), "{ev}: {got}");
         }
+    }
+
+    #[test]
+    fn startup_entries_read_back() {
+        // Shaped like `reg query` output.
+        let run = "\r\nHKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\r\n    MyNotch    REG_SZ    \"C:\\Users\\x\\AppData\\Local\\Programs\\MyNotch\\MyNotch.exe\"\r\n\r\n";
+        assert_eq!(startup_path(run).as_deref(), Some(r"C:\Users\x\AppData\Local\Programs\MyNotch\MyNotch.exe"));
+        assert_eq!(startup_path("nothing here"), None);
+        let off = "\r\nHKEY_CURRENT_USER\\...\\StartupApproved\\Run\r\n    MyNotch    REG_BINARY    030000004A3B2C1D00000000\r\n";
+        let on = "    MyNotch    REG_BINARY    020000000000000000000000\r\n";
+        assert!(!startup_approved(off) && startup_approved(on) && startup_approved(""));
     }
 
     #[test]
