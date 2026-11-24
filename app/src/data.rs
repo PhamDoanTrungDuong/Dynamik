@@ -189,164 +189,125 @@ fn join(ids: &[usize]) -> String {
     ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",")
 }
 
+const PRAYER_ADJ_KEYS: [&str; 5] = ["prayer_adj_subuh", "prayer_adj_dzuhur", "prayer_adj_ashar", "prayer_adj_maghrib", "prayer_adj_isya"];
+
+/// The settings kept in settings.txt under their own field name, listed once: the default, then
+/// (after `|v|`) the check a value gets when read. `from_text` and `to_text` both come from it;
+/// the few that need more (water.txt, the prayer offsets, text, page lists) are written out inside.
+macro_rules! simple_settings {
+    ($($f:ident = $d:expr $(, |$v:ident| $fix:expr)?;)*) => {
+        impl Settings {
+            pub fn from_text(text: &str, water: &str) -> Self {
+                let m = kv(text);
+                let w = kv(water);
+                let mut s = Settings {
+                    $($f: {
+                        let x = get(&m, stringify!($f), $d);
+                        $(let $v = x; let x = $fix;)?
+                        x
+                    },)*
+                    // Water settings live in water.txt (keys from 0x1400e31e0), defaults from 0x140049847.
+                    water: get(&w, "on", 1u8) != 0,
+                    goal: get(&w, "goal", 1500),
+                    bottle: get(&w, "bottle", 500u32).clamp(BOTTLE_MIN, BOTTLE_MAX),
+                    from: get(&w, "start", 480u16).min(FROM_MAX),
+                    until: get(&w, "end", 1020u16),
+                    weather_city: get(&m, "weather_city", get(&m, "prayer_city", crate::prayer::DEFAULT_CITY)).min(crate::prayer::place_count() - 1),
+                    prayer_adj: PRAYER_ADJ_KEYS.map(|k| get(&m, k, 10i32) - 10),
+                    widget_my_name: m.get("widget_my_name").cloned().unwrap_or_default(),
+                    widget_my_date: m.get("widget_my_date").cloned().unwrap_or_default(),
+                    page_order: page_order(ids(&m, "page_order")),
+                    pages_hidden: ids(&m, "pages_hidden").into_iter().filter(|&i| i < PAGE_COUNT).collect(),
+                };
+                // Same clamp as the original's loader (0x14004aa9e): until within [from + 60, 24:00].
+                s.until = s.until.max(s.from + MIN_SPAN).min(UNTIL_MAX);
+                s
+            }
+
+            /// settings.txt's text (the water settings live in water.txt).
+            pub fn to_text(&self) -> String {
+                let s = self;
+                let mut lines = vec![$(format!(concat!(stringify!($f), "={}"), s.$f)),*];
+                lines.push(format!("weather_city={}", s.weather_city));
+                lines.extend(PRAYER_ADJ_KEYS.iter().zip(s.prayer_adj).map(|(k, a)| format!("{k}={}", a + 10)));
+                lines.push(format!("widget_my_name={}", s.widget_my_name.replace(['\n', '\r'], " ")));
+                lines.push(format!("widget_my_date={}", s.widget_my_date.trim()));
+                lines.push(format!("page_order={}", join(&s.page_order)));
+                lines.push(format!("pages_hidden={}", join(&s.pages_hidden)));
+                lines.join("\n")
+            }
+        }
+    };
+}
+
+simple_settings! {
+    startup = false;
+    size = 0usize, |v| v.min(3);
+    minimal = true; // rests as the original's thin peek bar unless turned off
+    open_click = false;
+    sound = true;
+    status_ring = 0usize, |v| v.min(2);
+    focus = 25;
+    short_break = 5;
+    long_break = 15;
+    todo_start = true;
+    todo_end = true;
+    snooze = 10u32;
+    water_snooze = WATER_SNOOZE_MIN, |v| if SNOOZES.contains(&v) { v } else { WATER_SNOOZE_MIN };
+    prayer = false;
+    prayer_city = crate::prayer::DEFAULT_CITY, |v| v.min(crate::prayer::place_count() - 1);
+    prayer_method = 0usize, |v| v.min(crate::prayer::METHODS.len());
+    prayer_lat = 0.0f64, |v| v.clamp(-90.0, 90.0);
+    prayer_lon = 0.0f64, |v| v.clamp(-180.0, 180.0);
+    prayer_reminder = true;
+    prayer_early = false;
+    // Both off by default, as in the original's settings table (0x1400e1320).
+    prayer_pause_media = false;
+    today_page = false;
+    clipboard = false;
+    clipboard_max = CLIP_MAX_FREE, |v| v.clamp(1, CLIP_MAX_FREE);
+    clipboard_keep = false;
+    shelf_clear = false;
+    popup_battery = true;
+    battery_low = 20u8, |v| if BATTERY_LOWS.contains(&v) { v } else { 20 };
+    popup_wifi = true;
+    hide_fullscreen = true;
+    welcomed = false;
+    cal_early = true;
+    prayer_asr = 0usize, |v| if v <= 2 { v } else { 0 };
+    prayer_resume_media = false;
+    fahrenheit = false;
+    auto_next = false;
+    focus_quiet = false;
+    lyrics = true;
+    hud_volume = true;
+    hud_caps = true;
+    hud_language = true;
+    hud_brightness = true;
+    popup_bluetooth = true;
+    popup_song = true;
+    popup_headset_off = true;
+    notifications = true;
+    notification_preview = false;
+    mascot = true;
+    app_icon = 0usize;
+    language = crate::i18n::system_default(), |v| if v < crate::i18n::NAMES.len() { v } else { crate::i18n::system_default() };
+    widget_city1 = 5usize;
+    widget_city2 = 13usize;
+    widget_event = 1usize;
+    widget_left = 0usize;
+    widget_right = 1usize;
+    week_monday = false;
+    show_clock = true;
+}
+
 impl Settings {
     pub fn load() -> Self {
         Self::from_text(&read("settings.txt"), &read("water.txt"))
     }
 
-    pub fn from_text(text: &str, water: &str) -> Self {
-        let m = kv(text);
-        let w = kv(water);
-        let mut s = Settings {
-            startup: get(&m, "startup", false),
-            size: get(&m, "size", 0usize).min(3),
-            minimal: get(&m, "minimal", true), // rests as the original's thin peek bar unless turned off
-            open_click: get(&m, "open_click", false),
-            sound: get(&m, "sound", true),
-            status_ring: get(&m, "status_ring", 0usize).min(2),
-            focus: get(&m, "focus", 25),
-            short_break: get(&m, "short_break", 5),
-            long_break: get(&m, "long_break", 15),
-            todo_start: get(&m, "todo_start", true),
-            todo_end: get(&m, "todo_end", true),
-            snooze: get(&m, "snooze", 10u32),
-            water_snooze: Some(get(&m, "water_snooze", WATER_SNOOZE_MIN)).filter(|v| SNOOZES.contains(v)).unwrap_or(WATER_SNOOZE_MIN),
-            // Water settings live in water.txt (keys from 0x1400e31e0), defaults from 0x140049847.
-            water: get(&w, "on", 1u8) != 0,
-            goal: get(&w, "goal", 1500),
-            bottle: get(&w, "bottle", 500u32).clamp(BOTTLE_MIN, BOTTLE_MAX),
-            from: get(&w, "start", 480u16).min(FROM_MAX),
-            until: get(&w, "end", 1020u16),
-            prayer: get(&m, "prayer", false),
-            prayer_city: get(&m, "prayer_city", crate::prayer::DEFAULT_CITY).min(crate::prayer::place_count() - 1),
-            prayer_method: get(&m, "prayer_method", 0usize).min(crate::prayer::METHODS.len()),
-            weather_city: get(&m, "weather_city", get(&m, "prayer_city", crate::prayer::DEFAULT_CITY)).min(crate::prayer::place_count() - 1),
-            prayer_lat: get(&m, "prayer_lat", 0.0f64).clamp(-90.0, 90.0),
-            prayer_lon: get(&m, "prayer_lon", 0.0f64).clamp(-180.0, 180.0),
-            prayer_reminder: get(&m, "prayer_reminder", true),
-            prayer_early: get(&m, "prayer_early", false),
-            // Both off by default, as in the original's settings table (0x1400e1320).
-            prayer_pause_media: get(&m, "prayer_pause_media", false),
-            today_page: get(&m, "today_page", false),
-            prayer_adj: ["prayer_adj_subuh", "prayer_adj_dzuhur", "prayer_adj_ashar", "prayer_adj_maghrib", "prayer_adj_isya"]
-                .map(|k| get(&m, k, 10i32) - 10),
-            clipboard: get(&m, "clipboard", false),
-            clipboard_max: get(&m, "clipboard_max", CLIP_MAX_FREE).clamp(1, CLIP_MAX_FREE),
-            clipboard_keep: get(&m, "clipboard_keep", false),
-            shelf_clear: get(&m, "shelf_clear", false),
-            popup_battery: get(&m, "popup_battery", true),
-            battery_low: Some(get(&m, "battery_low", 20u8)).filter(|v| BATTERY_LOWS.contains(v)).unwrap_or(20),
-            popup_wifi: get(&m, "popup_wifi", true),
-            hide_fullscreen: get(&m, "hide_fullscreen", true),
-            welcomed: get(&m, "welcomed", false),
-            cal_early: get(&m, "cal_early", true),
-            prayer_asr: Some(get(&m, "prayer_asr", 0usize)).filter(|&a| a <= 2).unwrap_or(0),
-            prayer_resume_media: get(&m, "prayer_resume_media", false),
-            fahrenheit: get(&m, "fahrenheit", false),
-            auto_next: get(&m, "auto_next", false),
-            focus_quiet: get(&m, "focus_quiet", false),
-            lyrics: get(&m, "lyrics", true),
-            hud_volume: get(&m, "hud_volume", true),
-            hud_caps: get(&m, "hud_caps", true),
-            hud_language: get(&m, "hud_language", true),
-            hud_brightness: get(&m, "hud_brightness", true),
-            popup_bluetooth: get(&m, "popup_bluetooth", true),
-            popup_song: get(&m, "popup_song", true),
-            popup_headset_off: get(&m, "popup_headset_off", true),
-            notifications: get(&m, "notifications", true),
-            notification_preview: get(&m, "notification_preview", false),
-            mascot: get(&m, "mascot", true),
-            app_icon: get(&m, "app_icon", 0usize),
-            language: Some(get(&m, "language", crate::i18n::system_default())).filter(|&l| l < crate::i18n::NAMES.len()).unwrap_or_else(crate::i18n::system_default),
-            widget_city1: get(&m, "widget_city1", 5usize),
-            widget_city2: get(&m, "widget_city2", 13usize),
-            widget_event: get(&m, "widget_event", 1usize),
-            widget_my_name: m.get("widget_my_name").cloned().unwrap_or_default(),
-            widget_my_date: m.get("widget_my_date").cloned().unwrap_or_default(),
-            widget_left: get(&m, "widget_left", 0usize),
-            widget_right: get(&m, "widget_right", 1usize),
-            week_monday: get(&m, "week_monday", false),
-            show_clock: get(&m, "show_clock", true),
-            page_order: page_order(ids(&m, "page_order")),
-            pages_hidden: ids(&m, "pages_hidden").into_iter().filter(|&i| i < PAGE_COUNT).collect(),
-        };
-        // Same clamp as the original's loader (0x14004aa9e): until within [from + 60, 24:00].
-        s.until = s.until.max(s.from + MIN_SPAN).min(UNTIL_MAX);
-        s
-    }
-
     pub fn save(&self) {
-        let s = self;
-        let lines = [
-            format!("startup={}", s.startup),
-            format!("size={}", s.size),
-            format!("minimal={}", s.minimal),
-            format!("open_click={}", s.open_click),
-            format!("sound={}", s.sound),
-            format!("status_ring={}", s.status_ring),
-            format!("focus={}", s.focus),
-            format!("short_break={}", s.short_break),
-            format!("long_break={}", s.long_break),
-            format!("todo_start={}", s.todo_start),
-            format!("todo_end={}", s.todo_end),
-            format!("snooze={}", s.snooze),
-            format!("water_snooze={}", s.water_snooze),
-            format!("prayer={}", s.prayer),
-            format!("prayer_city={}", s.prayer_city),
-            format!("prayer_method={}", s.prayer_method),
-            format!("weather_city={}", s.weather_city),
-            format!("prayer_lat={}", s.prayer_lat),
-            format!("prayer_lon={}", s.prayer_lon),
-            format!("prayer_reminder={}", s.prayer_reminder),
-            format!("prayer_early={}", s.prayer_early),
-            format!("prayer_pause_media={}", s.prayer_pause_media),
-            format!("today_page={}", s.today_page),
-            format!("prayer_adj_subuh={}", s.prayer_adj[0] + 10),
-            format!("prayer_adj_dzuhur={}", s.prayer_adj[1] + 10),
-            format!("prayer_adj_ashar={}", s.prayer_adj[2] + 10),
-            format!("prayer_adj_maghrib={}", s.prayer_adj[3] + 10),
-            format!("prayer_adj_isya={}", s.prayer_adj[4] + 10),
-            format!("clipboard={}", s.clipboard),
-            format!("clipboard_max={}", s.clipboard_max),
-            format!("clipboard_keep={}", s.clipboard_keep),
-            format!("shelf_clear={}", s.shelf_clear),
-            format!("popup_battery={}", s.popup_battery),
-            format!("battery_low={}", s.battery_low),
-            format!("popup_wifi={}", s.popup_wifi),
-            format!("hide_fullscreen={}", s.hide_fullscreen),
-            format!("welcomed={}", s.welcomed),
-            format!("cal_early={}", s.cal_early),
-            format!("prayer_asr={}", s.prayer_asr),
-            format!("prayer_resume_media={}", s.prayer_resume_media),
-            format!("fahrenheit={}", s.fahrenheit),
-            format!("auto_next={}", s.auto_next),
-            format!("focus_quiet={}", s.focus_quiet),
-            format!("lyrics={}", s.lyrics),
-            format!("hud_volume={}", s.hud_volume),
-            format!("hud_caps={}", s.hud_caps),
-            format!("hud_language={}", s.hud_language),
-            format!("hud_brightness={}", s.hud_brightness),
-            format!("popup_bluetooth={}", s.popup_bluetooth),
-            format!("popup_song={}", s.popup_song),
-            format!("popup_headset_off={}", s.popup_headset_off),
-            format!("notifications={}", s.notifications),
-            format!("notification_preview={}", s.notification_preview),
-            format!("mascot={}", s.mascot),
-            format!("app_icon={}", s.app_icon),
-            format!("language={}", s.language),
-            format!("widget_city1={}", s.widget_city1),
-            format!("widget_city2={}", s.widget_city2),
-            format!("widget_event={}", s.widget_event),
-            format!("widget_my_name={}", s.widget_my_name.replace(['\n', '\r'], " ")),
-            format!("widget_my_date={}", s.widget_my_date.trim()),
-            format!("widget_left={}", s.widget_left),
-            format!("widget_right={}", s.widget_right),
-            format!("week_monday={}", s.week_monday),
-            format!("show_clock={}", s.show_clock),
-            format!("page_order={}", join(&s.page_order)),
-            format!("pages_hidden={}", join(&s.pages_hidden)),
-        ];
-        write("settings.txt", &lines.join("\n"));
+        write("settings.txt", &self.to_text());
     }
 
     /// The original's water plan (0x14004ab75): span = max(until - from, 60);
@@ -487,6 +448,61 @@ mod tests {
         // A line from before reminders were kept still reads.
         let old = task_from("2026-11-21|600|0|Đọc sách").unwrap();
         assert_eq!((old.done_day, old.start, old.fired_day), (NaiveDate::from_ymd_opt(2026, 11, 21), Some(600), None));
+    }
+
+    #[test]
+    fn settings_text_is_unchanged() {
+        // Every key and default exactly as settings.txt held them before the keys were listed once.
+        const GOLDEN: [&str; 67] = [
+            "app_icon=0", "auto_next=false", "battery_low=20", "cal_early=true", "clipboard=false", "clipboard_keep=false",
+            "clipboard_max=5", "fahrenheit=false", "focus=25", "focus_quiet=false", "hide_fullscreen=true",
+            "hud_brightness=true", "hud_caps=true", "hud_language=true", "hud_volume=true", "language=1", "long_break=15",
+            "lyrics=true", "mascot=true", "minimal=true", "notification_preview=false", "notifications=true",
+            "open_click=false", "page_order=0,1,2,3,4,5,6,7", "pages_hidden=", "popup_battery=true", "popup_bluetooth=true",
+            "popup_headset_off=true", "popup_song=true", "popup_wifi=true", "prayer=false", "prayer_adj_ashar=10",
+            "prayer_adj_dzuhur=10", "prayer_adj_isya=10", "prayer_adj_maghrib=10", "prayer_adj_subuh=10", "prayer_asr=0",
+            "prayer_city=17", "prayer_early=false", "prayer_lat=0", "prayer_lon=0", "prayer_method=0",
+            "prayer_pause_media=false", "prayer_reminder=true", "prayer_resume_media=false", "shelf_clear=false",
+            "short_break=5", "show_clock=true", "size=0", "snooze=10", "sound=true", "startup=false", "status_ring=0",
+            "today_page=false", "todo_end=true", "todo_start=true", "water_snooze=10", "weather_city=17",
+            "week_monday=false", "welcomed=false", "widget_city1=5", "widget_city2=13", "widget_event=1", "widget_left=0",
+            "widget_my_date=", "widget_my_name=", "widget_right=1",
+        ];
+        let text = Settings::from_text("language=1", "").to_text();
+        let mut lines: Vec<&str> = text.lines().collect();
+        lines.sort();
+        assert_eq!(lines, GOLDEN);
+    }
+
+    #[test]
+    fn settings_round_trip() {
+        let mut s = Settings::from_text("language=2", "");
+        s.size = 2;
+        s.battery_low = 30;
+        s.prayer_adj = [-3, 0, 4, 0, 10];
+        s.prayer_lat = 10.78;
+        s.widget_my_name = "Sinh\nnhật".into();
+        s.widget_my_date = "02/09".into();
+        s.page_order = vec![7, 0, 1, 2, 3, 4, 5, 6];
+        s.pages_hidden = vec![1];
+        let back = Settings::from_text(&s.to_text(), "");
+        assert_eq!(back.widget_my_name, "Sinh nhật"); // kept on one line
+        s.widget_my_name = "Sinh nhật".into();
+        assert!(back == s);
+    }
+
+    #[test]
+    fn older_settings_files_fill_defaults() {
+        let mut want = Settings::from_text("language=1", "");
+        want.size = 1;
+        assert!(Settings::from_text("language=1\nsize=1", "") == want);
+    }
+
+    #[test]
+    fn bad_values_fall_back_like_before() {
+        let s = Settings::from_text("size=9\nbattery_low=17\nlanguage=99\nprayer_asr=5\nwater_snooze=7\nclipboard_max=0", "");
+        assert_eq!((s.size, s.battery_low, s.prayer_asr, s.water_snooze, s.clipboard_max), (3, 20, 0, 10, 1));
+        assert!(s.language < crate::i18n::NAMES.len());
     }
 
     #[test]
