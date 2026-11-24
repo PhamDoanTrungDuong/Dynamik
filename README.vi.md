@@ -30,6 +30,7 @@ Nằm gọn ở mép trên màn hình, báo những gì đang diễn ra và mở
 - [Pop-up hệ thống](#pop-up-hệ-thống)
 - [Công cụ nhanh](#công-cụ-nhanh)
 - [Settings chung](#settings-chung)
+- [Hiệu năng](#hiệu-năng)
 - [Cài đặt](#cài-đặt)
 - [Mạng và quyền riêng tư](#mạng-và-quyền-riêng-tư)
 - [Build từ mã nguồn](#build-từ-mã-nguồn)
@@ -255,6 +256,18 @@ Click phải vào notch để mở, **Esc** hoặc **Close** để đóng. Đổ
 Dữ liệu nằm ở `%LOCALAPPDATA%\MyNotch`: `settings.txt`, `water.txt`, `water_log.txt`, `tasks.txt`,
 `focus.txt`, `shelf.txt`, `clipboard.txt` (chỉ khi bật "Remember after restart"). Khóa Gemini và địa
 chỉ lịch nằm riêng trong `gemini.key` và `calendar.key`, được mã hóa bằng DPAPI của Windows.
+
+## Hiệu năng
+
+Notch chỉ vẽ lại khi có gì thay đổi (Windows báo, sang phút mới, mascot chớp mắt), nên gần như không
+tốn tài nguyên máy.
+
+| Lúc | CPU | RAM (Task Manager) |
+|---|---|---|
+| Rảnh (notch thu nhỏ) | khoảng 0 % | khoảng 20–30 MB |
+| Đang mở | dưới 1 % | tối đa khoảng 65 MB, thu lại thì giảm xuống |
+
+<sub>Đo trên một máy, bản release, sau 6 giờ chạy. RAM tăng thêm một chút khi có ảnh bìa và logo app.</sub>
 
 ## Cài đặt
 

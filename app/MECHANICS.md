@@ -203,6 +203,9 @@ checking. This rebuild keeps egui/glow but follows the same rule:
 - Release build: LTO, one codegen unit, stripped (exe 15 MB → 4.6 MB).
 Measured idle (Task Manager figures): CPU 0.03 % of the machine, private working set ~36 MB; most
 of the larger "working set" is the graphics driver's shared DLLs.
+Measured again on 2026-11-24 (release build, after 6.5 h running, one PC): shrunk 0.08 % CPU and
+22 MB private working set (45 MB working set); open 0.4 % CPU, up to 63 MB private (87 MB working
+set), back to ~32 MB within 20 s of closing. Cover art and app logos account for the growth.
 
 ## Languages (not in the original)
 - English, Tiếng Việt, 中文 (简体), Français; setting `language`, first set from Windows' display

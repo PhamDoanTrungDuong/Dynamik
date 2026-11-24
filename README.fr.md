@@ -30,6 +30,7 @@ Elle se loge en haut de l'écran, montre ce qui se passe et s'ouvre en un petit 
 - [Pop-ups système](#pop-ups-système)
 - [Outils rapides](#outils-rapides)
 - [Paramètres généraux](#paramètres-généraux)
+- [Performances](#performances)
 - [Installation](#installation)
 - [Réseau et confidentialité](#réseau-et-confidentialité)
 - [Compiler depuis les sources](#compiler-depuis-les-sources)
@@ -264,6 +265,19 @@ Les données sont dans `%LOCALAPPDATA%\MyNotch` : `settings.txt`, `water.txt`, `
 `tasks.txt`, `focus.txt`, `shelf.txt`, `clipboard.txt` (seulement avec « Remember after restart »). La clé
 Gemini et l'adresse de l'agenda sont à part dans `gemini.key` et `calendar.key`, chiffrées avec DPAPI de
 Windows.
+
+## Performances
+
+L'encoche ne se redessine que lorsque quelque chose change (un événement Windows, la minute suivante, le
+clignement de la mascotte) : elle sollicite à peine votre PC.
+
+| État | CPU | Mémoire (Gestionnaire des tâches) |
+|---|---|---|
+| Au repos (encoche réduite) | ~0 % | environ 20–30 Mo |
+| Ouverte | moins de 1 % | jusqu'à environ 65 Mo, redescend à la fermeture |
+
+<sub>Mesuré sur un PC avec la version release après 6 heures de fonctionnement. La mémoire augmente un
+peu avec les pochettes et les logos d'applications.</sub>
 
 ## Installation
 

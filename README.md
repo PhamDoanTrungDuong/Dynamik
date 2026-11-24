@@ -30,6 +30,7 @@ It sits at the top edge of the screen, shows what's going on and opens into a sm
 - [System pop-ups](#system-pop-ups)
 - [Quick tools](#quick-tools)
 - [General settings](#general-settings)
+- [Performance](#performance)
 - [Installation](#installation)
 - [Network and privacy](#network-and-privacy)
 - [Building from source](#building-from-source)
@@ -258,6 +259,19 @@ a restart.
 Data lives in `%LOCALAPPDATA%\MyNotch`: `settings.txt`, `water.txt`, `water_log.txt`, `tasks.txt`,
 `focus.txt`, `shelf.txt`, `clipboard.txt` (only with "Remember after restart" on). The Gemini key and the
 calendar address are kept apart in `gemini.key` and `calendar.key`, encrypted with Windows DPAPI.
+
+## Performance
+
+The notch draws only when something changes (a Windows event, the next minute, the mascot's blink), so
+it barely touches your PC.
+
+| State | CPU | Memory (Task Manager) |
+|---|---|---|
+| Resting (notch shrunk) | ~0 % | about 20–30 MB |
+| Open | under 1 % | up to about 65 MB, back down once it closes |
+
+<sub>Measured on one PC with the release build after 6 hours of running. Memory grows a little with
+cover art and app logos.</sub>
 
 ## Installation
 
