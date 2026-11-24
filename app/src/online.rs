@@ -56,10 +56,17 @@ pub fn gemini(key: &str, rule: &str, question: &str) -> Result<String, AskError>
     };
     match send() {
         Err(_) => Err(AskError::Offline),
-        Ok((200, text)) => gemini_text(&text).ok_or(AskError::Empty),
-        Ok((429, _)) => Err(AskError::Busy),
-        Ok((400 | 401 | 403, _)) => Err(AskError::Key),
-        Ok(_) => Err(AskError::Offline),
+        Ok((status, text)) => gemini_answer(status, &text),
+    }
+}
+
+/// What a Gemini reply means: the answer, or why there is none.
+fn gemini_answer(status: i32, body: &str) -> Result<String, AskError> {
+    match status {
+        200 => gemini_text(body).ok_or(AskError::Empty),
+        429 => Err(AskError::Busy), // too many questions (the free tier's per-minute limit)
+        400 | 401 | 403 => Err(AskError::Key), // a key that's wrong, or not allowed for Gemini
+        _ => Err(AskError::Offline),
     }
 }
 
