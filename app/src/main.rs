@@ -98,6 +98,7 @@ const CAL_EARLY_MIN: u32 = 10; // calendar events also remind this many minutes 
 const SONG_POPUP_SECS: f32 = 3.0; // "Now playing" stays this long
 const SONG_QUIET_START_SECS: u64 = 10; // ...and doesn't show in the app's first seconds
 const HEADSET_LOW: u8 = 20; // a headset's battery at or under this (%) says so once
+const ASK_HISTORY_MAX: usize = 20; // questions ↑ can bring back
 const UNDO_SECS: f32 = 10.0; // how long the Water page offers to take a drink back
 const SLEEP_GAP_SECS: f64 = 5.0; // a gap this long between looks while Pomodoro runs = the PC slept
 const RESET_CONFIRM_SECS: f32 = 3.0;
@@ -246,6 +247,8 @@ struct App {
     ask_gen: u64,
     ask_waiting: bool,
     ask_reply: std::sync::Arc<std::sync::Mutex<(u64, String, bool)>>, // (question number, text, whether it is an answer)
+    ask_history: Vec<String>, // questions asked (in memory only), for ↑ / ↓
+    ask_hist_at: Option<usize>, // which one ↑ / ↓ shows now
     ask_copyable: bool, // the shown text is Gemini's answer (not "Thinking..." or an error)
     // Calendar: the secret iCal address (sealed too), what the watcher read, and reminders shown.
     ical_text: String,
@@ -421,7 +424,7 @@ impl App {
         let ical_text = secret(ICAL_FILE);
         let ical_url = std::sync::Arc::new(std::sync::Mutex::new(ical_text.clone()));
         App {
-            gemini_key: secret(GEMINI_FILE), ask_gen: 0, ask_waiting: false, ask_reply: Default::default(), ask_copyable: shot_demo_ask,
+            gemini_key: secret(GEMINI_FILE), ask_gen: 0, ask_waiting: false, ask_reply: Default::default(), ask_copyable: shot_demo_ask, ask_history: Vec::new(), ask_hist_at: None,
             calendar: if live {
                 calendar::watch(ical_url.clone())
             } else {
@@ -2630,6 +2633,37 @@ impl App {
         }
         if enter || tab {
             edit.request_focus();
+            // Kept (in memory only) for ↑ / ↓, the newest last, without repeating the last one.
+            let asked = self.ask_text.trim().to_string();
+            if !asked.is_empty() && self.ask_history.last() != Some(&asked) {
+                self.ask_history.push(asked);
+                if self.ask_history.len() > ASK_HISTORY_MAX {
+                    self.ask_history.remove(0);
+                }
+            }
+            self.ask_hist_at = None;
+        }
+        // ↑ brings back the questions asked before, one by one; ↓ goes forward again, to an empty box.
+        let (up, down) = ui.input(|i| (i.key_pressed(egui::Key::ArrowUp), i.key_pressed(egui::Key::ArrowDown)));
+        if edit.has_focus() && (up || down) && !self.ask_history.is_empty() {
+            let last = self.ask_history.len() - 1;
+            self.ask_hist_at = match (self.ask_hist_at, up) {
+                (None, true) => Some(last),
+                (Some(k), true) => Some(k.saturating_sub(1)),
+                (Some(k), false) if k < last => Some(k + 1),
+                _ => None,
+            };
+            self.ask_text = self.ask_hist_at.map_or_else(String::new, |k| self.ask_history[k].clone());
+            // The cursor goes to the end of the text brought back.
+            if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), edit.id) {
+                let end = egui::text::CCursor::new(self.ask_text.chars().count());
+                state.cursor.set_char_range(Some(egui::text::CCursorRange::one(end)));
+                state.store(ui.ctx(), edit.id);
+            }
+            self.ask_gen += 1;
+            self.ask_waiting = false;
+            self.ask_copyable = false;
+            self.ask_answer.clear();
         }
         if !self.ask_answer.is_empty() {
             // A real answer (a sum, a conversion, Gemini's reply) can be copied with one click.
