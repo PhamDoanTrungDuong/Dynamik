@@ -94,6 +94,7 @@ pub const CITIES: &[(&str, &str, f64, f64, f64)] = &[
 
 /// Places outside Indonesia: (country, city, latitude, longitude, usual method, standard UTC
 /// offset, summer-time rule). Their times are in that city's own clock, as people there read them.
+#[allow(clippy::approx_constant)] // Kuala Lumpur sits at 3.14° N, not π
 pub const WORLD: &[(&str, &str, f64, f64, usize, f64, Dst)] = &[
     ("Việt Nam", "Hà Nội", 21.03, 105.85, MWL, 7.0, Dst::No),
     ("Việt Nam", "TP Hồ Chí Minh", 10.82, 106.63, MWL, 7.0, Dst::No),

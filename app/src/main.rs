@@ -620,7 +620,7 @@ impl App {
             self.rounds += 1;
             self.rounds_day = self.today();
             // Texts and order from 0x14000143f: rounds 1-3 "Focus done", the 4th "Round complete".
-            if self.rounds % LONG_BREAK_EVERY == 0 {
+            if self.rounds.is_multiple_of(LONG_BREAK_EVERY) {
                 self.mode = Mode::Long;
                 (t("Round complete"), tr("Time for a {} min break", &[&self.s.long_break]))
             } else {
@@ -1084,7 +1084,7 @@ impl App {
                 self.wheel_acc -= step;
             }
         }
-        let mut go = left as i32 * -1 + right as i32;
+        let mut go = right as i32 - left as i32;
         if self.wheel_acc.abs() >= WHEEL_STEP {
             go = self.wheel_acc.signum() as i32;
             self.wheel_acc = 0.0;
@@ -1430,7 +1430,7 @@ impl App {
                         let a = -PI * 0.75 + PI * 0.5 * i as f32 / 10.0;
                         icon + vec2(0.0, 8.0) + *rad * vec2(a.cos(), a.sin())
                     }).collect();
-                    p.add(Shape::line(pts, Stroke::new(2.2_f32, if k as u8 + 1 <= level.max(1) * 2 { col } else { FAINT })));
+                    p.add(Shape::line(pts, Stroke::new(2.2_f32, if (k as u8) < level.max(1) * 2 { col } else { FAINT })));
                 }
                 p.circle_filled(icon + vec2(0.0, 8.0), 2.0, col);
             }
@@ -1752,7 +1752,7 @@ impl App {
         }
         // ↺ starts this part over; on a part not started yet, it starts the 4 rounds over.
         let untouched = !self.running && full;
-        let all = untouched && (self.rounds % LONG_BREAK_EVERY != 0 || self.mode != Mode::Focus);
+        let all = untouched && (!self.rounds.is_multiple_of(LONG_BREAK_EVERY) || self.mode != Mode::Focus);
         let name = if all { t("Start the 4 rounds over") } else { t("Start this part over") };
         if icon_button(ui, pos2(r.left() + 450.0, r.top() + 53.0), 11.0, "reset", name) {
             self.running = false;
@@ -1885,7 +1885,7 @@ impl App {
                 let bar = Rect::from_min_max(pos2(cx - bw / 2.0, plot.bottom() - v.min(1.0) * plot.height()), pos2(cx + bw / 2.0, plot.bottom()));
                 vertical_gradient(p, bar, bw / 2.0, Color32::from_rgb(56, 152, 255), Color32::from_rgb(29, 78, 216));
             }
-            if (hour - h0) % 3 == 0 {
+            if (hour - h0).is_multiple_of(3) {
                 p.text(pos2(cx, r.bottom() - 10.0), Align2::CENTER_CENTER, format!("{hour:02}"), reg(11.0), DIM);
             }
         }
@@ -3622,7 +3622,7 @@ fn check_circle(p: &egui::Painter, c: Pos2, r: f32, done: bool) {
 }
 
 fn bolt(p: &egui::Painter, c: Pos2, s: f32, col: Color32) {
-    let pts = vec![
+    let pts = [
         c + vec2(0.15 * s, -s),
         c + vec2(-0.55 * s, 0.15 * s),
         c + vec2(-0.05 * s, 0.15 * s),
@@ -3657,7 +3657,7 @@ fn notice_secs(title: &str, body: &str) -> f32 {
 
 /// Millilitres as litres: one decimal, or two when needed (1.5, 2.0, 1.75).
 fn litres(ml: u32) -> String {
-    if ml % 100 == 0 { format!("{:.1}", ml as f32 / 1000.0) } else { format!("{:.2}", ml as f32 / 1000.0) }
+    if ml.is_multiple_of(100) { format!("{:.1}", ml as f32 / 1000.0) } else { format!("{:.2}", ml as f32 / 1000.0) }
 }
 
 /// `text` on one line no wider than `width`, ending in "…" when it is cut (cut by real width,

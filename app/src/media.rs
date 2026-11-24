@@ -710,7 +710,7 @@ fn read_logo(info: &windows::ApplicationModel::AppInfo) -> Option<Logo> {
         return None; // nothing drawn
     }
     let side = (x1 - x0).max(y1 - y0) + 1;
-    let (cx, cy) = ((x0 + x1 + 1) / 2, (y0 + y1 + 1) / 2);
+    let (cx, cy) = ((x0 + x1).div_ceil(2), (y0 + y1).div_ceil(2));
     let mut square = image::RgbaImage::new(side, side);
     image::imageops::overlay(&mut square, &img, side as i64 / 2 - cx as i64, side as i64 / 2 - cy as i64);
     img = square;
