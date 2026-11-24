@@ -112,6 +112,15 @@ impl Parser<'_> {
             return self.unary();
         }
         let mut v = self.atom()?;
+        // Shorthand people write for big amounts: 500k, 2tr / 2 triệu (millions), 1 tỷ (billions).
+        let rest: String = self.s[self.i..].iter().collect::<String>().to_lowercase();
+        for (word, times) in [("triệu", 1e6), ("tr", 1e6), ("tỷ", 1e9), ("tỉ", 1e9), ("k", 1e3)] {
+            if rest.starts_with(word) {
+                self.i += word.chars().count();
+                v *= times;
+                break;
+            }
+        }
         while self.eat('%') {
             v /= 100.0;
         }
@@ -186,6 +195,14 @@ mod tests {
         assert_eq!(eval("3.14 * 2"), Some(6.28));
         assert_eq!(eval("1.00.0"), None); // groups that aren't thousands
         assert_eq!(currency("1.000.000 vnd to usd="), Some((1000000.0, "VND".into(), "USD".into())));
+        // Shorthand for big amounts.
+        assert_eq!(eval("500k + 1"), Some(500001.0));
+        assert_eq!(eval("2tr * 2"), Some(4000000.0));
+        assert_eq!(eval("2 triệu / 4"), Some(500000.0));
+        assert_eq!(eval("1,5 tỷ"), Some(1500000000.0));
+        assert_eq!(currency("500k vnd to usd="), Some((500000.0, "VND".into(), "USD".into())));
+        assert_eq!(currency("2tr vnd in usd"), Some((2000000.0, "VND".into(), "USD".into())));
+        assert_eq!(eval("ok"), None);
     }
 
     #[test]
