@@ -2784,10 +2784,7 @@ impl App {
                     combo(ui, "Tray icon", &mut s.app_icon, &tray::ICON_NAMES);
                     switch_row(ui, "Minimal notch — shrinks to a thin bar when nothing is going on", &mut s.minimal);
                     switch_row(ui, "Mascot — a little friend that lives in the notch", &mut s.mascot);
-                    let mut oc = s.open_click as usize;
-                    if combo(ui, "Open the notch on", &mut oc, &["Hover", "Click"]) {
-                        s.open_click = oc == 1;
-                    }
+                    pick(ui, "Open the notch on", &mut s.open_click, &[false, true], &["Hover", "Click"]);
                     // The shortcuts, and whether another app has taken one.
                     let taken = tray::hotkeys_taken();
                     row(ui, "Shortcuts — Ctrl+Alt+Space asks Nusa, Ctrl+Alt+T copies text from the screen", |ui| {
@@ -2809,27 +2806,18 @@ impl App {
                     switch_row(ui, "Quiet focus — notifications wait until focus ends", &mut s.focus_quiet);
                 });
                 card(ui, "Water reminders", |ui| {
-                    let mut sn = SNOOZES.iter().position(|&l| l == s.water_snooze).unwrap_or(1);
-                    if combo(ui, "\"Snooze\" waits", &mut sn, &["5 min", "10 min", "15 min"]) {
-                        s.water_snooze = SNOOZES[sn];
-                    }
+                    pick(ui, "\"Snooze\" waits", &mut s.water_snooze, &SNOOZES, &["5 min", "10 min", "15 min"]);
                 });
                 card(ui, "To-do reminders", |ui| {
                     switch_row(ui, "When a task starts", &mut s.todo_start);
                     switch_row(ui, "When time is up", &mut s.todo_end);
-                    let mut sn = SNOOZES.iter().position(|&l| l == s.snooze).unwrap_or(1);
-                    if combo(ui, "\"Later\" waits", &mut sn, &["5 min", "10 min", "15 min"]) {
-                        s.snooze = SNOOZES[sn];
-                    }
+                    pick(ui, "\"Later\" waits", &mut s.snooze, &SNOOZES, &["5 min", "10 min", "15 min"]);
                 });
                 card(ui, "Prayer times", |ui| {
                     switch_row(ui, "Show prayer times — worked out on this PC, for any city", &mut s.prayer);
                     ui.add_enabled_ui(s.prayer, |ui| {
-                        let names: Vec<String> = (0..prayer::place_count())
-                            .map(|i| if i == prayer::here_index() { t("My location").into() } else { let (r, c) = prayer::place_name(i); format!("{c} — {r}") })
-                            .collect();
-                        let refs: Vec<&str> = names.iter().map(|n| n.as_str()).collect();
-                        combo(ui, "City", &mut s.prayer_city, &refs);
+                        let names = place_names();
+                        combo(ui, "City", &mut s.prayer_city, &names.iter().map(String::as_str).collect::<Vec<_>>());
                         if s.prayer_city == prayer::here_index() {
                             let state = *locating.lock().unwrap();
                             let label = match state {
@@ -2945,11 +2933,8 @@ impl App {
                     combo(ui, "Left widget", &mut s.widget_left, &WIDGETS);
                     combo(ui, "Right widget", &mut s.widget_right, &WIDGETS);
                     if s.widget_left == WEATHER_WIDGET || s.widget_right == WEATHER_WIDGET {
-                        let names: Vec<String> = (0..prayer::place_count())
-                            .map(|i| if i == prayer::here_index() { t("My location").into() } else { let (r, c) = prayer::place_name(i); format!("{c} — {r}") })
-                            .collect();
-                        let refs: Vec<&str> = names.iter().map(|n| n.as_str()).collect();
-                        combo(ui, "Weather for", &mut s.weather_city, &refs);
+                        let names = place_names();
+                        combo(ui, "Weather for", &mut s.weather_city, &names.iter().map(String::as_str).collect::<Vec<_>>());
                         switch_row(ui, "Degrees in °F", &mut s.fahrenheit);
                     }
                     let cities: Vec<&str> = WORLD.iter().map(|w| w.0).collect();
@@ -2960,10 +2945,7 @@ impl App {
                         text_row(ui, "Name — what you count down to", &mut s.widget_my_name, t("Birthday, exam…"));
                         text_row(ui, "Date — DD/MM every year, or DD/MM/YYYY once", &mut s.widget_my_date, "31/12");
                     }
-                    let mut wm = s.week_monday as usize;
-                    if combo(ui, "Week starts on", &mut wm, &["Sunday", "Monday"]) {
-                        s.week_monday = wm == 1;
-                    }
+                    pick(ui, "Week starts on", &mut s.week_monday, &[false, true], &["Sunday", "Monday"]);
                 });
                 card(ui, "Data", |ui| {
                     // Everything the app keeps lives in one folder (to back up, or carry to another PC).
@@ -3930,6 +3912,23 @@ fn combo(ui: &mut egui::Ui, label: &str, v: &mut usize, items: &[&str]) -> bool 
             });
     });
     *v != old
+}
+
+/// A combo choosing one of `values`, shown as `names`; a value not in the list shows the middle one.
+fn pick<T: Copy + PartialEq>(ui: &mut egui::Ui, label: &str, v: &mut T, values: &[T], names: &[&str]) -> bool {
+    let mut i = values.iter().position(|x| x == v).unwrap_or(values.len() / 2);
+    let changed = combo(ui, label, &mut i, names);
+    if changed {
+        *v = values[i];
+    }
+    changed
+}
+
+/// The City list as Settings shows it: "Town — Region", and "My location" last.
+fn place_names() -> Vec<String> {
+    (0..prayer::place_count())
+        .map(|i| if i == prayer::here_index() { t("My location").into() } else { let (r, c) = prayer::place_name(i); format!("{c} — {r}") })
+        .collect()
 }
 
 fn clip_text(text: &str, g: &egui::Galley, max_rows: usize, clipped: bool, just: bool) -> String {
