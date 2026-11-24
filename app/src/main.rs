@@ -293,6 +293,7 @@ struct App {
     water_snooze: Option<u32>,
     water_settings: bool,
     reset_armed: Option<Instant>,
+    settings_reset: Option<Instant>, // the first click of Settings › Restore (a second one within 3 s restores)
     last_drink: Option<(u32, usize, u32, Instant)>, // (ml, hour, ml taken from the bottle, when) for Undo
     water_log: BTreeMap<NaiveDate, u32>, // ml drunk on earlier days (water_log.txt)
     // focus
@@ -464,7 +465,7 @@ impl App {
             alert: if shot.is_some() { demo_alert() } else if welcome { Some(welcome_hint(s.open_click)) } else { None }, shot, frames: 0,
             w: Spring { x: start.x, v: 0.0 }, h: Spring { x: start.y, v: 0.0 }, content: Spring { x: 0.0, v: 0.0 }, spring: SPRING, last_target: start,
             tasks: load_tasks(), form: None, todo_edit: false,
-            water_day, drank, in_bottle, hours, fired, water_snooze: None, water_settings: false, reset_armed: None,
+            water_day, drank, in_bottle, hours, fired, water_snooze: None, water_settings: false, reset_armed: None, settings_reset: None,
             // --page 2 --demo shows the Water page just after a 250 ml drink (with its Undo).
             water_log,
             last_drink: (!live && page == 2 && std::env::args().any(|a| a == "--demo")).then(|| (250, now.hour() as usize, 0, Instant::now())),
@@ -2768,6 +2769,7 @@ impl App {
         let locating = self.locating.clone();
         let (gemini, ical, ical_url) = (&mut self.gemini_key, &mut self.ical_text, self.ical_url.clone());
         let cal = self.calendar.lock().unwrap().clone();
+        let reset_at = &mut self.settings_reset;
         let inner = Rect::from_min_max(pos2(r.left() + 18.0, r.top() + 44.0), pos2(r.right() - 18.0, r.bottom() - 10.0));
         settings_style(ui);
         ui.allocate_new_ui(egui::UiBuilder::new().max_rect(inner), |ui| {
@@ -2962,6 +2964,28 @@ impl App {
                     if combo(ui, "Week starts on", &mut wm, &["Sunday", "Monday"]) {
                         s.week_monday = wm == 1;
                     }
+                });
+                card(ui, "Data", |ui| {
+                    // Everything the app keeps lives in one folder (to back up, or carry to another PC).
+                    row(ui, "Data folder — settings, water, tasks and history", |ui| {
+                        if ui.add(egui::Button::new(t("Open")).corner_radius(12.0)).clicked() {
+                            let _ = std::process::Command::new("explorer.exe").arg(dir()).spawn();
+                        }
+                    });
+                    // Two clicks within RESET_CONFIRM_SECS, as the Water page's Reset.
+                    let armed = reset_at.is_some_and(|at| at.elapsed().as_secs_f32() < RESET_CONFIRM_SECS);
+                    row(ui, "Restore default settings — water, tasks, history, keys and the calendar stay", |ui| {
+                        let label = if armed { t("Sure?") } else { t("Restore") };
+                        let button = egui::Button::new(egui::RichText::new(label).color(WHITE)).corner_radius(12.0).fill(if armed { RED } else { BTN });
+                        if ui.add(button).clicked() {
+                            if armed {
+                                *s = default_settings_keeping(s);
+                                *reset_at = None;
+                            } else {
+                                *reset_at = Some(Instant::now());
+                            }
+                        }
+                    });
                 });
                 ui.add_space(8.0);
             });
@@ -3634,6 +3658,24 @@ fn fit_line(p: &egui::Painter, text: &str, font: FontId, col: Color32, width: f3
     let mut job = egui::text::LayoutJob::simple_singleline(text.replace('\n', " "), font, col);
     job.wrap = egui::text::TextWrapping { max_width: width.max(10.0), max_rows: 1, break_anywhere: true, overflow_character: Some('…') };
     p.layout_job(job)
+}
+
+/// The default settings, keeping what isn't a preference to restore: the language, the water plan
+/// (it lives with the day's water), whether Windows starts the app, the location found, the welcome.
+fn default_settings_keeping(s: &Settings) -> Settings {
+    Settings {
+        language: s.language,
+        water: s.water,
+        goal: s.goal,
+        bottle: s.bottle,
+        from: s.from,
+        until: s.until,
+        startup: s.startup,
+        prayer_lat: s.prayer_lat,
+        prayer_lon: s.prayer_lon,
+        welcomed: s.welcomed,
+        ..Settings::from_text("", "")
+    }
 }
 
 /// Asks Windows where this PC is, on its own thread (unless already asking); `update` applies it.
@@ -4440,6 +4482,17 @@ mod tests {
             let got = next_event(d(2031, 1, 1), ev).unwrap();
             assert!(prayer::hijri(got).1 == m && prayer::hijri(got).2 == dd && got < d(2032, 1, 1), "{ev}: {got}");
         }
+    }
+
+    #[test]
+    fn restoring_defaults_keeps_what_isnt_a_preference() {
+        let mut s = Settings::from_text("", "");
+        (s.language, s.goal, s.startup, s.prayer_lat, s.welcomed) = (1, 2500, true, 21.03, true);
+        (s.mascot, s.size, s.focus, s.show_clock) = (!s.mascot, 3, 50, !s.show_clock);
+        let d = default_settings_keeping(&s);
+        let fresh = Settings::from_text("", "");
+        assert_eq!((d.language, d.goal, d.startup, d.prayer_lat, d.welcomed), (1, 2500, true, 21.03, true));
+        assert_eq!((d.mascot, d.size, d.focus, d.show_clock), (fresh.mascot, fresh.size, fresh.focus, fresh.show_clock));
     }
 
     #[test]
