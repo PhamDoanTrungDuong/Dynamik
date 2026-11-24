@@ -127,9 +127,36 @@ impl Parser<'_> {
         while self.peek().is_some_and(|c| c.is_ascii_digit() || c == '.' || c == ',') {
             self.i += 1;
         }
-        let num: String = self.s[start..self.i].iter().map(|&c| if c == ',' { '.' } else { c }).collect();
-        num.parse().ok()
+        let raw: String = self.s[start..self.i].iter().collect();
+        number(&raw)
     }
+}
+
+/// A written number, with "." or "," as the decimal mark or as thousands, as people write them:
+/// both marks → the last one is the decimal (1.000,5 / 1,000.5); one mark used more than once →
+/// thousands (1.000.000 / 2,500,000); one mark once, with exactly three digits after and not after
+/// a lone 0 → thousands (1,000 / 25.000); otherwise the decimal (1,5 / 0.125 / 3.14).
+/// shortcut: "3.141" reads as 3141 by that rule; a sum needing it can write 3.1410.
+fn number(raw: &str) -> Option<f64> {
+    let (dots, commas) = (raw.matches('.').count(), raw.matches(',').count());
+    let digits = |s: &str| s.chars().filter(|c| c.is_ascii_digit()).collect::<String>();
+    let text = if dots > 0 && commas > 0 {
+        let at = raw.rfind(['.', ',']).unwrap();
+        format!("{}.{}", digits(&raw[..at]), digits(&raw[at + 1..]))
+    } else if dots + commas > 1 {
+        // Thousands only if every group after the first has three digits.
+        let groups: Vec<&str> = raw.split(['.', ',']).collect();
+        if !groups[1..].iter().all(|g| g.len() == 3) {
+            return None;
+        }
+        digits(raw)
+    } else if dots + commas == 1 {
+        let (int, frac) = raw.split_once(['.', ',']).unwrap();
+        if frac.len() == 3 && !int.is_empty() && int != "0" { format!("{int}{frac}") } else { format!("{int}.{frac}") }
+    } else {
+        raw.to_string()
+    };
+    text.parse().ok()
 }
 
 #[cfg(test)]
@@ -145,6 +172,20 @@ mod tests {
         assert_eq!(eval("10 / 4"), Some(2.5));
         assert_eq!(eval("1,5 x 2 ="), Some(3.0));
         assert_eq!(eval("50% * 80"), Some(40.0));
+    }
+
+    #[test]
+    fn numbers_written_with_thousands() {
+        assert_eq!(eval("1,000*2="), Some(2000.0));
+        assert_eq!(eval("1.000.000 / 4"), Some(250000.0));
+        assert_eq!(eval("2,500,000 + 1"), Some(2500001.0));
+        assert_eq!(eval("1.234,5 * 2"), Some(2469.0)); // Vietnamese / European
+        assert_eq!(eval("1,234.5 * 2"), Some(2469.0)); // English
+        assert_eq!(eval("1,5 + 1"), Some(2.5));
+        assert_eq!(eval("0.125 * 8"), Some(1.0));
+        assert_eq!(eval("3.14 * 2"), Some(6.28));
+        assert_eq!(eval("1.00.0"), None); // groups that aren't thousands
+        assert_eq!(currency("1.000.000 vnd to usd="), Some((1000000.0, "VND".into(), "USD".into())));
     }
 
     #[test]
