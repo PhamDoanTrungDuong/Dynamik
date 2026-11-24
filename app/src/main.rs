@@ -3190,7 +3190,9 @@ impl eframe::App for App {
                     }
                     if self.settings_open {
                         ui.painter().text(pos2(r.left() + 22.0, r.top() + 24.0), Align2::LEFT_CENTER, t("Settings"), bold(17.0), WHITE);
-                        if pill_button(ui, Rect::from_min_size(pos2(r.right() - 76.0, r.top() + 12.0), vec2(56.0, 24.0)), t("Close"), BTN, "sclose") {
+                        // Close, or Esc as in the Ask box.
+                        let esc = ui.input(|i| i.key_pressed(egui::Key::Escape));
+                        if pill_button(ui, Rect::from_min_size(pos2(r.right() - 76.0, r.top() + 12.0), vec2(56.0, 24.0)), t("Close"), BTN, "sclose") || esc {
                             self.settings_open = false;
                         }
                         self.page_settings(ui, r);
