@@ -27,6 +27,7 @@ Nằm gọn ở mép trên màn hình, báo những gì đang diễn ra và mở
 - [Các trang](#các-trang)
 - [Pop-up hệ thống](#pop-up-hệ-thống)
 - [Công cụ nhanh](#công-cụ-nhanh)
+- [Settings chung](#settings-chung)
 - [Cài đặt](#cài-đặt)
 - [Mạng và quyền riêng tư](#mạng-và-quyền-riêng-tư)
 - [Build từ mã nguồn](#build-từ-mã-nguồn)
@@ -230,6 +231,28 @@ click phải để hủy. Đọc ngay trên máy, không cần mạng, theo các
 tiếng Việt thì cài gói ngôn ngữ Tiếng Việt ở Settings › Time & language › Language).
 
 **Ngôn ngữ giao diện:** English, Tiếng Việt, 中文 (简体), Français.
+
+## Settings chung
+
+Click phải vào notch để mở, **Esc** hoặc **Close** để đóng. Đổi gì là lưu ngay, mở lại app vẫn giữ.
+
+| Mục | Chọn |
+|---|---|
+| Language | English, Tiếng Việt, 中文 (简体), Français (lần đầu theo ngôn ngữ Windows) |
+| Start with Windows | Hiện đúng trạng thái thật, kể cả khi tắt từ Task Manager; app đổi chỗ thì tự trỏ lại |
+| Size | Small 100% · Medium 115% · Large 130% · Extra large 150% |
+| Show date and time | Tắt đồng hồ trên notch và đầu trang (Pomodoro đang chạy vẫn hiện) |
+| Tray icon | Violet · Neon dark · Classic light |
+| Minimal notch · Mascot | Bật/tắt (cũng có trong menu khay) |
+| Open the notch on | Rê chuột · Click |
+| Status ring | Water · Tasks done today · No ring |
+| Reminder sounds | Chuông cho Pomodoro, To-do, Water |
+| Pages | ↑ ↓ đổi thứ tự, công tắc để ẩn (luôn giữ ít nhất 1 trang) |
+| Dữ liệu | **Mở** thư mục dữ liệu · **Khôi phục** cài đặt mặc định (bấm 2 lần; nước, việc, lịch sử, khóa và lịch vẫn giữ) |
+
+Dữ liệu nằm ở `%LOCALAPPDATA%\MyNotch`: `settings.txt`, `water.txt`, `water_log.txt`, `tasks.txt`,
+`focus.txt`, `shelf.txt`, `clipboard.txt` (chỉ khi bật "Remember after restart"). Khóa Gemini và địa
+chỉ lịch nằm riêng trong `gemini.key` và `calendar.key`, được mã hóa bằng DPAPI của Windows.
 
 ## Cài đặt
 

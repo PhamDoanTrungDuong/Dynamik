@@ -405,3 +405,13 @@ of the larger "working set" is the graphics driver's shared DLLs.
   400/401/403 → the key, anything else → offline; tested without the network.
 - Copy: sums, conversions and Gemini's answers (not "Thinking…" or errors) get a Copy button.
 - ↑ / ↓: the last 20 questions, in memory only.
+
+## Settings, reworked
+- Start with Windows reads what Windows will really do at start (`reg query` of the Run value and of
+  Explorer\StartupApproved\Run, where Task Manager's switch keeps a first byte of 03 for "off"); an
+  entry pointing at an exe that no longer exists points at this one again. Turning it on clears a
+  Task Manager "off"; a change Windows refuses is undone in Settings and said in a pop-up.
+- Data card: Open (explorer on %LOCALAPPDATA%\MyNotch) and Restore (two clicks within 3 s): the
+  defaults, keeping the language, the water plan, Start with Windows, the location found and the
+  welcome flag; tasks, history, keys and the calendar address are other files and stay.
+- Esc closes Settings.
