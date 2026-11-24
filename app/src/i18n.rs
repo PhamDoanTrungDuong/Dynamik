@@ -269,6 +269,7 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("Copy some text", "Hãy sao chép một đoạn chữ", "复制一些文字", "Copiez du texte"),
     ("It will wait here, ready to paste again", "Nó sẽ nằm đây, sẵn sàng để dán lại", "它会留在这里，随时再次粘贴", "Il vous attendra ici, prêt à être recollé"),
     ("Copied", "Đã chép", "已复制", "Copié"),
+    ("Copy", "Chép", "复制", "Copier"),
     ("{} items · click to copy · drag into a chat", "{} mục · bấm để chép · kéo vào khung chat", "{} 项 · 点击复制 · 拖入聊天", "{} éléments · cliquer pour copier · glisser dans un chat"),
     // To-do
     ("Task Done Today", "Việc xong hôm nay", "今日已完成", "Tâches faites aujourd'hui"),

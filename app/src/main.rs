@@ -245,7 +245,8 @@ struct App {
     gemini_key: String,
     ask_gen: u64,
     ask_waiting: bool,
-    ask_reply: std::sync::Arc<std::sync::Mutex<(u64, String)>>,
+    ask_reply: std::sync::Arc<std::sync::Mutex<(u64, String, bool)>>, // (question number, text, whether it is an answer)
+    ask_copyable: bool, // the shown text is Gemini's answer (not "Thinking..." or an error)
     // Calendar: the secret iCal address (sealed too), what the watcher read, and reminders shown.
     ical_text: String,
     ical_url: std::sync::Arc<std::sync::Mutex<String>>,
@@ -420,7 +421,7 @@ impl App {
         let ical_text = secret(ICAL_FILE);
         let ical_url = std::sync::Arc::new(std::sync::Mutex::new(ical_text.clone()));
         App {
-            gemini_key: secret(GEMINI_FILE), ask_gen: 0, ask_waiting: false, ask_reply: Default::default(),
+            gemini_key: secret(GEMINI_FILE), ask_gen: 0, ask_waiting: false, ask_reply: Default::default(), ask_copyable: shot_demo_ask,
             calendar: if live {
                 calendar::watch(ical_url.clone())
             } else {
@@ -2575,6 +2576,7 @@ impl App {
         if edit.changed() {
             self.ask_gen += 1; // the question changed: an answer still on its way is for the old one
             self.ask_waiting = false;
+            self.ask_copyable = false;
         }
         // Gemini's answer to the latest question.
         if self.ask_waiting {
@@ -2582,6 +2584,7 @@ impl App {
             if reply.0 == self.ask_gen {
                 self.ask_waiting = false;
                 self.ask_answer = reply.1;
+                self.ask_copyable = reply.2;
             }
         }
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
@@ -2629,11 +2632,27 @@ impl App {
             edit.request_focus();
         }
         if !self.ask_answer.is_empty() {
+            // A real answer (a sum, a conversion, Gemini's reply) can be copied with one click.
+            let copyable = self.ask_answer.starts_with('=') || self.ask_copyable;
+            if copyable {
+                let done = self.copied.as_ref().is_some_and(|(c, at)| *c == answer_text(&self.ask_answer) && at.elapsed().as_secs() < 2);
+                let label = if done { t("Copied") } else { t("Copy") };
+                if pill_button(ui, Rect::from_min_size(pos2(r.right() - 92.0, r.top() + 96.0), vec2(66.0, 24.0)), label, BTN, "acopy") {
+                    let text = answer_text(&self.ask_answer);
+                    if let Some(c) = self.clipboard.as_mut() {
+                        let _ = c.set_text(text.clone());
+                    }
+                    self.last_clip = text.clone();
+                    self.copied = Some((text, Instant::now()));
+                }
+            }
+            let text_right = if copyable { r.right() - 104.0 } else { r.right() - 30.0 };
             if self.ask_answer.starts_with('=') {
-                p.text(pos2(r.left() + 30.0, r.top() + 116.0), Align2::LEFT_CENTER, &self.ask_answer, bold(30.0), WHITE);
+                let g = fit_line(&p, &self.ask_answer, bold(30.0), WHITE, text_right - (r.left() + 30.0));
+                p.galley(pos2(r.left() + 30.0, r.top() + 116.0 - g.size().y / 2.0), g, WHITE);
             } else {
                 // Gemini's answers wrap and scroll, and can be selected to copy.
-                let area = Rect::from_min_max(pos2(r.left() + 30.0, r.top() + 92.0), pos2(r.right() - 30.0, r.bottom() - 28.0));
+                let area = Rect::from_min_max(pos2(r.left() + 30.0, r.top() + 92.0), pos2(text_right, r.bottom() - 28.0));
                 let col = if self.ask_waiting { DIM } else { WHITE };
                 ui.allocate_new_ui(egui::UiBuilder::new().max_rect(area), |ui| {
                     egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
@@ -2647,6 +2666,7 @@ impl App {
 
     /// Sends `question` to Gemini on its own thread; the answer shows when it comes back.
     fn ask_gemini(&mut self, rule: &str, question: String) {
+        self.ask_copyable = false;
         if self.gemini_key.trim().is_empty() {
             self.ask_answer = t("Ask Nusa needs a Gemini key — add one in Settings").to_string();
             return;
@@ -2656,14 +2676,16 @@ impl App {
         self.ask_answer = t("Thinking…").to_string();
         let (n, key, rule, out) = (self.ask_gen, self.gemini_key.trim().to_string(), rule.to_string(), self.ask_reply.clone());
         std::thread::spawn(move || {
-            let answer = match online::gemini(&key, &rule, &question) {
+            let reply = online::gemini(&key, &rule, &question);
+            let ok = reply.is_ok();
+            let answer = match reply {
                 Ok(a) => a,
                 Err(online::AskError::Key) => t("Gemini turned the key down — check it in Settings").to_string(),
                 Err(online::AskError::Busy) => t("Too many questions just now — try again in a minute").to_string(),
                 Err(online::AskError::Offline) => t("Couldn't reach Gemini — check the internet").to_string(),
                 Err(online::AskError::Empty) => t("Gemini gave no answer to that").to_string(),
             };
-            *out.lock().unwrap() = (n, answer);
+            *out.lock().unwrap() = (n, answer, ok);
             tray::wake();
         });
     }
@@ -3891,6 +3913,11 @@ fn summer(rule: Dst, std: f64, utc: NaiveDateTime) -> bool {
     }
 }
 
+/// What the Copy button copies: the answer without its "= " (a sum, a conversion), or Gemini's text.
+fn answer_text(shown: &str) -> String {
+    shown.strip_prefix("= ").unwrap_or(shown).trim().to_string()
+}
+
 /// One group per app (newest app first): (app name, app id, newest time, its (title, body), how many).
 type AppGroup = (String, String, i64, (String, String), usize);
 
@@ -4300,6 +4327,13 @@ mod tests {
             let got = next_event(d(2031, 1, 1), ev).unwrap();
             assert!(prayer::hijri(got).1 == m && prayer::hijri(got).2 == dd && got < d(2032, 1, 1), "{ev}: {got}");
         }
+    }
+
+    #[test]
+    fn copy_takes_the_answer_itself() {
+        assert_eq!(answer_text("= 84"), "84");
+        assert_eq!(answer_text("= 25,779 VND"), "25,779 VND");
+        assert_eq!(answer_text("Hà Nội là thủ đô."), "Hà Nội là thủ đô.");
     }
 
     #[test]
