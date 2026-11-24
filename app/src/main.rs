@@ -652,7 +652,20 @@ impl App {
         self.last_tick = Instant::now();
         let today = self.today();
         let m = self.now_min();
+        let now_f = m as f32 + self.now.second() as f32 / 60.0; // minutes, with the seconds
+        self.tick_pomodoro(today, dt);
+        self.tick_water(today, now_f);
+        self.tick_tasks(today, m);
+        self.tick_calendar(today, m);
+        self.tick_prayer(today, now_f);
+        self.tick_media_resume();
+        self.tick_events();
+        self.tick_battery_news();
+        self.watch_indicators();
+        self.close_finished_popup();
+    }
 
+    fn tick_pomodoro(&mut self, today: NaiveDate, dt: f64) {
         // A new day starts the 4 rounds over, unless a part is under way.
         if self.rounds_day != today && !self.running && self.left >= self.mode_len(self.mode) {
             self.rounds_day = today;
@@ -680,7 +693,9 @@ impl App {
                 self.next_part(false);
             }
         }
+    }
 
+    fn tick_water(&mut self, today: NaiveDate, now: f32) {
         if self.water_day != today {
             // The day that ended goes into the history before today starts from 0.
             self.water_log.insert(self.water_day, self.drank);
@@ -693,119 +708,127 @@ impl App {
         }
         // Water reminders as the original schedules them (0x140001fe5): slot i is due at
         // from + (i + 0.5) * interval and shows if seen within 2 minutes; a snooze within 3.
-        if self.s.water && self.alert.is_none() && self.drank < self.s.goal {
-            let now = m as f32 + self.now.second() as f32 / 60.0;
-            let p = self.s.water_plan();
-            let mut due = false;
-            if let Some(at) = self.water_snooze.filter(|&at| now >= at as f32) {
-                self.water_snooze = None;
-                due = now < at as f32 + 3.0;
-            }
-            // A slot missed while something else was up, the PC slept or a game filled the screen
-            // still shows, as long as the next one isn't due yet (so at most one catch-up).
-            let window = p.interval.max(2.0);
-            for i in 0..p.reminders.min(64) {
-                let t = self.s.from as f32 + (i as f32 + 0.5) * p.interval;
-                if self.fired & (1 << i) == 0 && now >= t {
-                    self.fired |= 1 << i;
-                    due |= now < t + window;
-                }
-            }
-            if due {
-                self.save_water();
-                if (self.in_bottle as f32) < REFILL_FRACTION * p.each as f32 {
-                    self.notify(t("Time to Refill"), t("Your bottle is probably empty"), Kind::Refill);
-                } else {
-                    self.notify(t("Time to Drink"), &format!("{} ml", p.each), Kind::Drink);
-                }
+        if !self.s.water || self.alert.is_some() || self.drank >= self.s.goal {
+            return;
+        }
+        let p = self.s.water_plan();
+        let mut due = false;
+        if let Some(at) = self.water_snooze.filter(|&at| now >= at as f32) {
+            self.water_snooze = None;
+            due = now < at as f32 + 3.0;
+        }
+        // A slot missed while something else was up, the PC slept or a game filled the screen
+        // still shows, as long as the next one isn't due yet (so at most one catch-up).
+        let window = p.interval.max(2.0);
+        for i in 0..p.reminders.min(64) {
+            let t = self.s.from as f32 + (i as f32 + 0.5) * p.interval;
+            if self.fired & (1 << i) == 0 && now >= t {
+                self.fired |= 1 << i;
+                due |= now < t + window;
             }
         }
+        if due {
+            self.save_water();
+            if (self.in_bottle as f32) < REFILL_FRACTION * p.each as f32 {
+                self.notify(t("Time to Refill"), t("Your bottle is probably empty"), Kind::Refill);
+            } else {
+                self.notify(t("Time to Drink"), &format!("{} ml", p.each), Kind::Drink);
+            }
+        }
+    }
 
+    fn tick_tasks(&mut self, today: NaiveDate, m: u32) {
         // Tasks come back every day: yesterday's reminders and "Later" don't carry over.
         for task in self.tasks.iter_mut().filter(|t| t.fired_day != Some(today)) {
             (task.fired_start, task.fired_end, task.snooze_until, task.fired_day) = (false, false, 0, Some(today));
         }
-        if self.alert.is_none() {
-            let hit = self.tasks.iter().enumerate().find_map(|(i, t)| {
-                let st = t.start? as u32;
-                if t.done_day == Some(today) || m < t.snooze_until {
-                    return None;
-                }
-                if self.s.todo_start && !t.fired_start && m >= st && m < st + 60 {
-                    return Some((i, true));
-                }
-                (self.s.todo_end && t.dur > 0 && !t.fired_end && m >= st + t.dur as u32).then_some((i, false))
-            });
-            if let Some((i, start)) = hit {
-                let title = self.tasks[i].title.clone();
-                if start {
-                    self.tasks[i].fired_start = true;
-                    self.notify(t("Task Time!"), &title, Kind::TaskStart(i));
-                } else {
-                    self.tasks[i].fired_end = true;
-                    self.notify(t("Time's Up!"), &title, Kind::TaskEnd(i));
-                }
-                // Kept, so opening the app again doesn't remind of the same thing twice.
-                data::save_tasks(&self.tasks);
-            }
+        if self.alert.is_some() {
+            return;
         }
-
-        // Calendar events remind as tasks do: at the start, within the first hour, once; and
-        // (cal_early) 10 minutes before, as meetings want.
-        if self.alert.is_none() && self.s.todo_start {
-            let today = self.today();
-            let events = self.calendar.lock().unwrap().events.clone();
-            let due = events.into_iter().find_map(|e| {
-                let st = e.start?;
-                let early = self.s.cal_early && st >= CAL_EARLY_MIN && m >= st - CAL_EARLY_MIN && m < st;
-                let now = m >= st && m < st + 60;
-                let key = (today, st, e.title.clone(), early);
-                ((early || now) && !self.cal_fired.contains(&key)).then_some((e, key))
-            });
-            if let Some((e, key)) = due {
-                let early = key.3;
-                self.cal_fired.insert(key);
-                let title = if e.title.is_empty() { t("(No title)").to_string() } else { e.title };
-                let head = if early { tr("Calendar · in {} min", &[&CAL_EARLY_MIN]) } else { t("Calendar").to_string() };
-                self.notify(&head, &title, Kind::Event(e.start.unwrap_or(0)));
+        let hit = self.tasks.iter().enumerate().find_map(|(i, t)| {
+            let st = t.start? as u32;
+            if t.done_day == Some(today) || m < t.snooze_until {
+                return None;
             }
+            if self.s.todo_start && !t.fired_start && m >= st && m < st + 60 {
+                return Some((i, true));
+            }
+            (self.s.todo_end && t.dur > 0 && !t.fired_end && m >= st + t.dur as u32).then_some((i, false))
+        });
+        if let Some((i, start)) = hit {
+            let title = self.tasks[i].title.clone();
+            if start {
+                self.tasks[i].fired_start = true;
+                self.notify(t("Task Time!"), &title, Kind::TaskStart(i));
+            } else {
+                self.tasks[i].fired_end = true;
+                self.notify(t("Time's Up!"), &title, Kind::TaskEnd(i));
+            }
+            // Kept, so opening the app again doesn't remind of the same thing twice.
+            data::save_tasks(&self.tasks);
         }
+    }
 
+    /// Calendar events remind as tasks do: at the start, within the first hour, once; and
+    /// (cal_early) 10 minutes before, as meetings want.
+    fn tick_calendar(&mut self, today: NaiveDate, m: u32) {
+        if self.alert.is_some() || !self.s.todo_start {
+            return;
+        }
+        let events = self.calendar.lock().unwrap().events.clone();
+        let due = events.into_iter().find_map(|e| {
+            let st = e.start?;
+            let early = self.s.cal_early && st >= CAL_EARLY_MIN && m >= st - CAL_EARLY_MIN && m < st;
+            let now = m >= st && m < st + 60;
+            let key = (today, st, e.title.clone(), early);
+            ((early || now) && !self.cal_fired.contains(&key)).then_some((e, key))
+        });
+        if let Some((e, key)) = due {
+            let early = key.3;
+            self.cal_fired.insert(key);
+            let title = if e.title.is_empty() { t("(No title)").to_string() } else { e.title };
+            let head = if early { tr("Calendar · in {} min", &[&CAL_EARLY_MIN]) } else { t("Calendar").to_string() };
+            self.notify(&head, &title, Kind::Event(e.start.unwrap_or(0)));
+        }
+    }
+
+    fn tick_prayer(&mut self, today: NaiveDate, now_f: f32) {
         // "My location" not found yet would time prayers for 0°, 0°: no reminders until it is.
-        if self.s.prayer && self.prayer_placed() && (self.s.prayer_reminder || self.s.prayer_pause_media) && self.alert.is_none() {
-            let t = self.prayer_times(today);
-            'outer: for (i, &pt) in t.iter().enumerate() {
-                for early in [false, true] {
-                    if early && !(self.s.prayer_early && self.s.prayer_reminder) {
-                        continue;
+        if !(self.s.prayer && self.prayer_placed() && (self.s.prayer_reminder || self.s.prayer_pause_media) && self.alert.is_none()) {
+            return;
+        }
+        for (i, &pt) in self.prayer_times(today).iter().enumerate() {
+            for early in [false, true] {
+                if early && !(self.s.prayer_early && self.s.prayer_reminder) {
+                    continue;
+                }
+                let at = if early { pt.saturating_sub(PRAYER_EARLY_MIN) } else { pt };
+                // Due from 3 s before (0x140002345: window -0.05 .. +2.0 minutes). One missed while
+                // something else was up, the PC slept or a game filled the screen still shows later:
+                // the early one until prayer time, the prayer itself for PRAYER_CATCHUP_MIN.
+                let until = if early { pt as f32 } else { pt as f32 + PRAYER_CATCHUP_MIN };
+                if now_f >= at as f32 + PRAYER_WINDOW.0 && now_f < until && self.prayer_fired.insert((today, i, early)) {
+                    let body = if early { tr("In {} minutes", &[&PRAYER_EARLY_MIN]) } else { i18n::t("It's time to pray").to_string() };
+                    if self.s.prayer_reminder {
+                        self.notify(i18n::t(prayer::NAMES[i]), &body, Kind::Prayer(pt, early));
                     }
-                    let at = if early { pt.saturating_sub(PRAYER_EARLY_MIN) } else { pt };
-                    // Due from 3 s before (0x140002345: window -0.05 .. +2.0 minutes). One missed while
-                    // something else was up, the PC slept or a game filled the screen still shows later:
-                    // the early one until prayer time, the prayer itself for PRAYER_CATCHUP_MIN.
-                    let now_f = m as f32 + self.now.second() as f32 / 60.0;
-                    let until = if early { pt as f32 } else { pt as f32 + PRAYER_CATCHUP_MIN };
-                    if now_f >= at as f32 + PRAYER_WINDOW.0 && now_f < until && self.prayer_fired.insert((today, i, early)) {
-                        let body = if early { tr("In {} minutes", &[&PRAYER_EARLY_MIN]) } else { i18n::t("It's time to pray").to_string() };
-                        if self.s.prayer_reminder {
-                            self.notify(i18n::t(prayer::NAMES[i]), &body, Kind::Prayer(pt, early));
+                    // "Pause media at prayer time": only at the time itself (not on a late catch-up),
+                    // and it does not resume.
+                    if !early && self.s.prayer_pause_media && now_f < at as f32 + PRAYER_WINDOW.1 {
+                        // Remembered only when something was playing, for "Play again after".
+                        if self.media.now.lock().is_ok_and(|n| n.playing) {
+                            self.prayer_paused = Some(Instant::now());
                         }
-                        // "Pause media at prayer time": only at the time itself (not on a late catch-up),
-                        // and it does not resume.
-                        if !early && self.s.prayer_pause_media && now_f < at as f32 + PRAYER_WINDOW.1 {
-                            // Remembered only when something was playing, for "Play again after".
-                            if self.media.now.lock().is_ok_and(|n| n.playing) {
-                                self.prayer_paused = Some(Instant::now());
-                            }
-                            self.media.send(media::Cmd::Pause);
-                        }
-                        break 'outer;
+                        self.media.send(media::Cmd::Pause);
                     }
+                    return;
                 }
             }
         }
+    }
 
-        // Music paused at prayer time plays again later, if asked; not if someone played it meanwhile.
+    /// Music paused at prayer time plays again later, if asked; not if someone played it meanwhile.
+    fn tick_media_resume(&mut self) {
         if let Some(at) = self.prayer_paused {
             // A few seconds' grace: the player takes a moment to report the pause itself.
             let playing = at.elapsed().as_secs() > 5 && self.media.now.lock().is_ok_and(|n| n.playing);
@@ -816,30 +839,29 @@ impl App {
                 self.media.send(media::Cmd::Play);
             }
         }
+    }
 
-        // Read again only what Windows says changed (screenshots get no events and need none).
+    /// Reads again only what Windows says changed (screenshots get no events and need none).
+    fn tick_events(&mut self) {
         let ev = if self.shot.is_none() { tray::take_events() } else { 0 };
         // While hidden it looks each time (see idle_wait), so it comes back even if an event is missed.
         if ev & tray::EV_WINDOW != 0 || self.hidden || !self.s.hide_fullscreen {
             self.hidden = self.shot.is_none() && self.s.hide_fullscreen && fullscreen_in_front();
         }
-        if ev & tray::EV_CLIP != 0 {
-            if self.s.clipboard {
-                if let Some(t) = self.clipboard.as_mut().and_then(|c| c.get_text().ok()) {
-                    if t != self.last_clip {
-                        self.last_clip = t.clone();
-                        // Passwords and other text marked "don't keep" never go into the history.
-                        if !t.trim().is_empty() && !tray::clipboard_private() {
-                            self.clips.retain(|c| c.1 != t);
-                            self.clips.insert(0, (Utc::now().timestamp(), t));
-                            self.clips.truncate(self.s.clipboard_max);
-                            self.save_clips();
-                        }
+        if ev & tray::EV_CLIP != 0 && self.s.clipboard {
+            if let Some(t) = self.clipboard.as_mut().and_then(|c| c.get_text().ok()) {
+                if t != self.last_clip {
+                    self.last_clip = t.clone();
+                    // Passwords and other text marked "don't keep" never go into the history.
+                    if !t.trim().is_empty() && !tray::clipboard_private() {
+                        self.clips.retain(|c| c.1 != t);
+                        self.clips.insert(0, (Utc::now().timestamp(), t));
+                        self.clips.truncate(self.s.clipboard_max);
+                        self.save_clips();
                     }
                 }
             }
         }
-
         if ev & tray::EV_POWER != 0 {
             let old = self.battery;
             self.battery = battery();
@@ -862,12 +884,14 @@ impl App {
                 }
             }
         }
-        // Battery news isn't lost behind another pop-up: it takes the place of one that needs no
-        // answer (a volume bar, a notification…), or waits for one that does (Drank / Snooze…).
-        if self.battery_news.is_some() {
-            let passing = self.alert.as_ref().is_none_or(|a| matches!(a.kind, Kind::Hud(..) | Kind::Notice(..) | Kind::Network(_) | Kind::Bluetooth(_) | Kind::Battery(..) | Kind::About | Kind::Hint | Kind::Song));
-            if passing {
-                let mut news = self.battery_news.take().unwrap();
+    }
+
+    /// Battery news isn't lost behind another pop-up: it takes the place of one that needs no
+    /// answer (a volume bar, a notification…), or waits for one that does (Drank / Snooze…).
+    fn tick_battery_news(&mut self) {
+        let passing = self.alert.as_ref().is_none_or(|a| matches!(a.kind, Kind::Hud(..) | Kind::Notice(..) | Kind::Network(_) | Kind::Bluetooth(_) | Kind::Battery(..) | Kind::About | Kind::Hint | Kind::Song));
+        if passing {
+            if let Some(mut news) = self.battery_news.take() {
                 news.at = Instant::now();
                 if self.s.sound {
                     beep();
@@ -875,28 +899,28 @@ impl App {
                 self.alert = Some(news);
             }
         }
+    }
 
-        self.watch_indicators();
-
-        // Information pop-ups close by themselves; the ones with buttons wait for an answer.
-        if self.alert.as_ref().is_some_and(|a| matches!(a.kind, Kind::Network(_)) && a.at.elapsed().as_secs_f32() > NET_POPUP_SECS) {
-            self.alert = None;
-        }
-        if self.alert.as_ref().is_some_and(|a| matches!(a.kind, Kind::Hud(..)) && a.at.elapsed().as_secs_f32() > HUD_SECS) {
-            self.alert = None;
-        }
-        if self.alert.as_ref().is_some_and(|a| match a.kind {
-            Kind::Battery(..) => a.at.elapsed().as_secs_f32() > BATTERY_POPUP_SECS,
-            Kind::Bluetooth(_) => a.at.elapsed().as_secs_f32() > BT_POPUP_SECS,
-            // Longer messages stay longer, and none goes while the pointer rests on it.
-            Kind::Notice(..) => a.at.elapsed().as_secs_f32() > notice_secs(&a.title, &a.body) && self.last_inside.elapsed().as_secs_f32() > NOTICE_AFTER_HOVER_SECS,
-            Kind::About => a.at.elapsed().as_secs_f32() > ABOUT_SECS,
-            Kind::Hint => a.at.elapsed().as_secs_f32() > HINT_SECS,
-            Kind::Song => a.at.elapsed().as_secs_f32() > SONG_POPUP_SECS,
-            Kind::Prayer(_, early) => a.at.elapsed().as_secs_f32() > if early { PRAYER_EARLY_SECS } else { PRAYER_POPUP_SECS },
-            Kind::Event(_) => a.at.elapsed().as_secs_f32() > PRAYER_POPUP_SECS,
-            _ => false,
-        }) {
+    /// Information pop-ups close by themselves; the ones with buttons wait for an answer.
+    fn close_finished_popup(&mut self) {
+        let over = self.alert.as_ref().is_some_and(|a| {
+            let age = a.at.elapsed().as_secs_f32();
+            match a.kind {
+                Kind::Network(_) => age > NET_POPUP_SECS,
+                Kind::Hud(..) => age > HUD_SECS,
+                Kind::Battery(..) => age > BATTERY_POPUP_SECS,
+                Kind::Bluetooth(_) => age > BT_POPUP_SECS,
+                // Longer messages stay longer, and none goes while the pointer rests on it.
+                Kind::Notice(..) => age > notice_secs(&a.title, &a.body) && self.last_inside.elapsed().as_secs_f32() > NOTICE_AFTER_HOVER_SECS,
+                Kind::About => age > ABOUT_SECS,
+                Kind::Hint => age > HINT_SECS,
+                Kind::Song => age > SONG_POPUP_SECS,
+                Kind::Prayer(_, early) => age > if early { PRAYER_EARLY_SECS } else { PRAYER_POPUP_SECS },
+                Kind::Event(_) => age > PRAYER_POPUP_SECS,
+                _ => false,
+            }
+        });
+        if over {
             self.alert = None;
         }
     }
