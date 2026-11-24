@@ -268,6 +268,19 @@ mod tests {
     }
 
     #[test]
+    fn gemini_errors_say_what_went_wrong() {
+        // Shaped like Google's own error replies.
+        let quota = r#"{"error":{"code":429,"message":"Resource has been exhausted (e.g. check quota).","status":"RESOURCE_EXHAUSTED"}}"#;
+        let bad_key = r#"{"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT"}}"#;
+        assert_eq!(gemini_answer(429, quota), Err(AskError::Busy));
+        assert_eq!(gemini_answer(400, bad_key), Err(AskError::Key));
+        assert_eq!(gemini_answer(403, "{}"), Err(AskError::Key));
+        assert_eq!(gemini_answer(503, "{}"), Err(AskError::Offline));
+        assert_eq!(gemini_answer(200, r#"{"candidates":[{"finishReason":"SAFETY"}]}"#), Err(AskError::Empty));
+        assert_eq!(gemini_answer(200, r#"{"candidates":[{"content":{"parts":[{"text":"Hi"}]}}]}"#), Ok("Hi".into()));
+    }
+
+    #[test]
     fn reads_rates() {
         let body = r#"{"result":"success","base_code":"USD","rates":{"USD":1,"VND":25400.5,"EUR":0.92,"JPY":155.1},"time_eol_unix":0}"#;
         let r = parse_rates(body);
