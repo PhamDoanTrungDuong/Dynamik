@@ -89,7 +89,8 @@ Sắp xếp lại hoặc ẩn từng trang trong **Settings › Pages**.
 - Bài đang phát từ trình phát hỗ trợ điều khiển nhạc của Windows (Spotify, trình duyệt…): **ảnh bìa
   thật**, tên bài, ca sĩ – album, thời gian.
 - Icon app đang phát ở góc ảnh bìa; mở nhiều trình phát thì bấm icon để chuyển.
-- Play/Pause, bài trước/sau, click hoặc kéo thanh tiến trình để tua. Thanh tiến trình và sóng nhạc
+- Play/Pause, bài trước/sau (trình phát không có bài trước/sau, như một video YouTube lẻ, thì hai nút
+  này tua lùi/tới 10 giây), click hoặc kéo thanh tiến trình để tua. Thanh tiến trình và sóng nhạc
   lấy màu ảnh bìa.
 - **Lời bài hát chạy theo nhạc** (LRCLIB), click một dòng để nhảy tới. Bật/tắt bằng nút lời trên trang,
   tắt hẳn ở Settings › Music.

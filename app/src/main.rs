@@ -99,6 +99,7 @@ const SONG_POPUP_SECS: f32 = 3.0; // "Now playing" stays this long
 const SONG_QUIET_START_SECS: u64 = 10; // ...and doesn't show in the app's first seconds
 const HEADSET_LOW: u8 = 20; // a headset's battery at or under this (%) says so once
 const ASK_HISTORY_MAX: usize = 20; // questions ↑ can bring back
+const SKIP_SECS: f64 = 10.0; // back / forward, for a player with no previous or next track
 const UNDO_SECS: f32 = 10.0; // how long the Water page offers to take a drink back
 const SLEEP_GAP_SECS: f64 = 5.0; // a gap this long between looks while Pomodoro runs = the PC slept
 const RESET_CONFIRM_SECS: f32 = 3.0;
@@ -1597,17 +1598,40 @@ impl App {
         let cy = r.top() + if lyr { 150.0 } else { 155.0 };
         let (lx, mid, gap) = if lyr { (r.left() + 68.0, r.left() + 170.0, 52.0) } else { (r.left() + 68.0, r.center().x, 62.0) };
         let on = if now.active() { WHITE } else { FAINT };
-        if glyph_button(ui, pos2(lx, cy), "lyrics", if self.s.lyrics { WHITE } else { FAINT }) && self.s.lyrics {
+        if glyph_button(ui, pos2(lx, cy), "lyrics", if self.s.lyrics { WHITE } else { FAINT }, t("Lyrics")) && self.s.lyrics {
             self.lyrics_open = !self.lyrics_open;
         }
-        if glyph_button(ui, pos2(mid - gap, cy), "prev", on) {
-            self.media.send(media::Cmd::Prev);
+        // Previous / next where the player has them; where it doesn't (a single browser video, say),
+        // the same buttons skip back / forward 10 s, marked with a small "10".
+        let (pos, dur) = (now.pos(), now.duration);
+        let back: Option<(media::Cmd, &str)> = if now.can_prev {
+            Some((media::Cmd::Prev, t("Previous")))
+        } else if now.can_seek {
+            Some((media::Cmd::Seek((pos - SKIP_SECS).max(0.0)), t("Back 10 seconds")))
+        } else {
+            None
+        };
+        let fwd: Option<(media::Cmd, &str)> = if now.can_next {
+            Some((media::Cmd::Next, t("Next")))
+        } else if now.can_seek && dur > 0.0 {
+            Some((media::Cmd::Seek((pos + SKIP_SECS).min(dur)), t("Forward 10 seconds")))
+        } else {
+            None
+        };
+        for (cmd, kind, x, seeking) in [(back, "prev", mid - gap, !now.can_prev), (fwd, "next", mid + gap, !now.can_next)] {
+            let col = if cmd.is_some() { on } else { FAINT };
+            let tip = cmd.as_ref().map_or(t("This player doesn't allow it"), |c| c.1);
+            if glyph_button(ui, pos2(x, cy), kind, col, tip) {
+                if let Some((c, _)) = cmd {
+                    self.media.send(c);
+                }
+            }
+            if seeking && now.can_seek && now.active() {
+                p.text(pos2(x, cy + 13.0), Align2::CENTER_CENTER, "10", reg(9.0), DIM);
+            }
         }
-        if glyph_button(ui, pos2(mid, cy), if now.playing { "pause" } else { "play" }, on) {
+        if glyph_button(ui, pos2(mid, cy), if now.playing { "pause" } else { "play" }, on, if now.playing { t("Pause") } else { t("Play") }) {
             self.media.send(media::Cmd::Toggle);
-        }
-        if glyph_button(ui, pos2(mid + gap, cy), "next", on) {
-            self.media.send(media::Cmd::Next);
         }
 
         if lyr {
@@ -3461,9 +3485,11 @@ fn album_art(p: &egui::Painter, r: Rect) {
 }
 
 /// Media control glyphs: lyrics bubble, previous, play, pause and next.
-fn glyph_button(ui: &mut egui::Ui, c: Pos2, kind: &str, col: Color32) -> bool {
+/// A music control; `tip` is its tooltip and what screen readers say.
+fn glyph_button(ui: &mut egui::Ui, c: Pos2, kind: &str, col: Color32, tip: &str) -> bool {
     let rect = Rect::from_center_size(c, vec2(30.0, 26.0));
-    let resp = ui.interact(rect, ui.id().with(("glyph", kind)), Sense::click());
+    let resp = ui.interact(rect, ui.id().with(("glyph", kind)), Sense::click()).on_hover_text(tip);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tip));
     let p = ui.painter();
     if resp.hovered() {
         p.circle_filled(c, 15.0, Color32::from_gray(30));
@@ -4112,6 +4138,9 @@ fn demo_music(m: media::Media, shot_music: bool) -> media::Media {
             app_id: "demo.player".into(),
             app_name: "Spotify".into(),
             players: 2,
+            can_next: true,
+            can_prev: true,
+            can_seek: true,
             ..Default::default()
         };
     }

@@ -28,6 +28,10 @@ pub struct Now {
     pub app_id: String,    // the player (its logo comes from `logo`)
     pub app_name: String,  // the player's name, e.g. "Spotify"
     pub players: usize,    // how many players Windows knows now (more than one: they can be switched)
+    // What the player allows: a single browser video, say, has no next or previous track.
+    pub can_next: bool,
+    pub can_prev: bool,
+    pub can_seek: bool,
 }
 
 /// A player's name: what Windows calls the app, else the readable part of its id
@@ -348,7 +352,9 @@ pub fn network_watch() -> Arc<Mutex<Option<(String, u8)>>> {
 fn read(s: &windows::Media::Control::GlobalSystemMediaTransportControlsSession) -> windows::core::Result<Now> {
     let props = s.TryGetMediaPropertiesAsync()?.get()?;
     let tl = s.GetTimelineProperties()?;
-    let playing = s.GetPlaybackInfo()?.PlaybackStatus()? == Status::Playing;
+    let info = s.GetPlaybackInfo()?;
+    let playing = info.PlaybackStatus()? == Status::Playing;
+    let controls = info.Controls()?;
     let mut position = tl.Position()?.Duration as f64 / 1e7;
     // Windows reports the position as of its last update; add the time since then while playing.
     if playing {
@@ -366,6 +372,9 @@ fn read(s: &windows::Media::Control::GlobalSystemMediaTransportControlsSession) 
         position,
         duration: tl.EndTime()?.Duration as f64 / 1e7,
         read_at: Some(Instant::now()),
+        can_next: controls.IsNextEnabled().unwrap_or(true),
+        can_prev: controls.IsPreviousEnabled().unwrap_or(true),
+        can_seek: controls.IsPlaybackPositionEnabled().unwrap_or(true),
         ..Default::default()
     })
 }
@@ -785,6 +794,23 @@ mod player_name_tests {
         let t = super::cover_tint(&px).unwrap();
         assert!(t[0] == 230 && t[1] < 60 && t[2] < 70, "{t:?}");
         assert_eq!(super::cover_tint(&[128, 128, 128, 255].repeat(50)), None);
+    }
+}
+
+#[cfg(test)]
+mod controls_tests {
+    /// What the playing app lets us do (skipped when nothing plays): cargo test live_controls -- --ignored
+    /// Only the yes/no of each button is printed, never what is playing.
+    #[test]
+    #[ignore]
+    fn live_controls_of_the_playing_app() {
+        let manager = super::Manager::RequestAsync().unwrap().get().unwrap();
+        let Ok(session) = manager.GetCurrentSession() else { return println!("nothing playing") };
+        let c = session.GetPlaybackInfo().unwrap().Controls().unwrap();
+        println!(
+            "play {:?} pause {:?} next {:?} previous {:?} seek {:?}",
+            c.IsPlayEnabled(), c.IsPauseEnabled(), c.IsNextEnabled(), c.IsPreviousEnabled(), c.IsPlaybackPositionEnabled()
+        );
     }
 }
 
