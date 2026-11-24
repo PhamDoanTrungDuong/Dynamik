@@ -203,10 +203,30 @@ Bật/tắt từng loại ở **Settings › Popups**.
 
 ## Công cụ nhanh
 
-| Phím tắt | Làm gì |
+### 💬 Hỏi Nusa — `Ctrl + Alt + Space`
+
+<img src="app/shots/ask.png" width="560" alt="Ô hỏi Nusa với câu trả lời và nút Chép">
+
+| Gõ | Ra |
 |---|---|
-| `Ctrl + Alt + Space` | **Hỏi Nusa** — gõ phép tính (`12*(3+4)=`), đổi tiền (`100usd to vnd=`), hoặc hỏi bất kỳ điều gì rồi Enter để hỏi **Gemini**; **Tab để dịch** sang ngôn ngữ của app. Hỏi Gemini cần khóa Gemini riêng (miễn phí ở [aistudio.google.com/apikey](https://aistudio.google.com/apikey)), dán vào Settings › Ask Nusa. |
-| `Ctrl + Alt + T` | **OCR** — kéo chọn một vùng màn hình, chữ trong đó được đọc ngay trên máy và copy. |
+| `12*(3+4)=` | **Tính ngay** khi gõ dấu `=` (hoặc Enter), không cần mạng. Có `+ − × ÷ ^ %`, ngoặc, số âm. |
+| `1.000.000 / 4`, `2,500,000 + 1`, `1,5 * 2` | Hiểu số có dấu hàng nghìn và dấu thập phân kiểu Việt lẫn kiểu Anh. |
+| `500k`, `2tr`, `2 triệu`, `1 tỷ` | Hiểu cách viết tắt số tiền lớn. |
+| `100usd to vnd=`, `500k vnd to usd`, `1,5 eur in jpy` | **Đổi tiền** (Enter tự thêm `=`); tỉ giá giữ 12 giờ. |
+| Câu hỏi bất kỳ + **Enter** | Hỏi **Gemini**, trả lời tối đa 3 câu ngắn, cùng ngôn ngữ câu hỏi. |
+| Chữ bất kỳ + **Tab** | **Dịch** sang ngôn ngữ của app (chữ đã ở ngôn ngữ đó thì dịch sang tiếng Anh). |
+
+- Nút **Chép** copy kết quả hoặc câu trả lời; phím **↑ / ↓** gọi lại các câu đã hỏi (tối đa 20, chỉ trong
+  bộ nhớ); **Esc** để đóng.
+- Hỏi Gemini và Dịch cần khóa Gemini riêng (miễn phí ở
+  [aistudio.google.com/apikey](https://aistudio.google.com/apikey)), dán vào Settings › Ask Nusa; khóa
+  được mã hóa trên máy. Khóa sai, hỏi nhiều quá hay mất mạng đều được báo rõ.
+
+### 🔍 Lấy chữ trên màn hình — `Ctrl + Alt + T`
+
+Màn hình đứng lại, kéo chọn một vùng thì chữ trong đó được copy (kèm "Đã copy N ký tự"); **Esc** hoặc
+click phải để hủy. Đọc ngay trên máy, không cần mạng, theo các ngôn ngữ đã cài trong Windows (muốn đọc
+tiếng Việt thì cài gói ngôn ngữ Tiếng Việt ở Settings › Time & language › Language).
 
 **Ngôn ngữ giao diện:** English, Tiếng Việt, 中文 (简体), Français.
 

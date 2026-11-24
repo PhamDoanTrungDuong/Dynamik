@@ -395,3 +395,13 @@ of the larger "working set" is the graphics driver's shared DLLs.
 - Bluetooth (popup_headset_off): a headset that goes away says "Disconnected" by the name it had;
   one at or under 20 % battery says so once, until it is back above 30 %.
 - `--popup song --demo` shows "Now playing" in a screenshot.
+
+## Ask box, reworked
+- Numbers (calc::number): both marks → the last one is the decimal (1.000,5 / 1,000.5); one mark more
+  than once → thousands (1.000.000); one mark once with exactly three digits after, not after a lone
+  0 → thousands (1,000); otherwise the decimal (1,5 / 0.125 / 3.14). Shorthand after a number: k,
+  tr / triệu (millions), tỷ / tỉ (billions).
+- Gemini replies (online::gemini_answer): 200 → the text (or "no answer"), 429 → too many questions,
+  400/401/403 → the key, anything else → offline; tested without the network.
+- Copy: sums, conversions and Gemini's answers (not "Thinking…" or errors) get a Copy button.
+- ↑ / ↓: the last 20 questions, in memory only.
