@@ -32,7 +32,7 @@ mod controls;
 mod popup;
 #[path = "ui/demo.rs"]
 mod demo;
-#[path = "ui/pages.rs"]
+#[path = "ui/pages/mod.rs"]
 mod pages;
 
 use chrono::{Datelike, Duration, Local, NaiveDate, NaiveDateTime, Timelike, Utc, Weekday};
