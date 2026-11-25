@@ -498,7 +498,8 @@ impl App {
             alert: if shot.is_some() { demo_alert() } else if welcome { Some(welcome_hint(s.open_click)) } else { None }, shot, frames: 0,
             w: Spring { x: start.x, v: 0.0 }, h: Spring { x: start.y, v: 0.0 }, content: Spring { x: 0.0, v: 0.0 }, spring: SPRING, last_target: start,
             tasks: load_tasks(), form: None, todo_edit: false,
-            notes: if shot_notes { demo_notes() } else { load_notes() },
+            // Tidied at start too, so notes done over 3 days ago are gone before the first change.
+            notes: if shot_notes { demo_notes() } else { let mut n = load_notes(); tidy_notes(&mut n, now.date()); n },
             note_draft: String::new(), note_focus: false,
             water_day, drank, in_bottle, hours, fired, water_snooze: None, water_settings: false, reset_armed: None, settings_reset: None,
             // A screenshot can open a section: --settings 4.

@@ -411,7 +411,13 @@ pub struct Note {
 }
 
 pub fn load_notes() -> Vec<Note> {
-    read("notes.txt").lines().filter_map(note_from).collect()
+    let text = read("notes.txt");
+    let notes: Vec<Note> = text.lines().filter_map(note_from).collect();
+    // A line that doesn't read would be gone at the next save: keep the file as it was first.
+    if notes.len() < text.lines().filter(|l| !l.trim().is_empty()).count() {
+        write("notes.bak", &text);
+    }
+    notes
 }
 
 pub fn save_notes(n: &[Note]) {
