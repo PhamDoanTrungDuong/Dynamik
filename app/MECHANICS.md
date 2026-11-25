@@ -418,3 +418,20 @@ set), back to ~32 MB within 20 s of closing. Cover art and app logos account for
   defaults, keeping the language, the water plan, Start with Windows, the location found and the
   welcome flag; tasks, history, keys and the calendar address are other files and stay.
 - Esc closes Settings.
+
+## Code layout (2026-11-25)
+
+`src/main.rs` starts the app and holds its state, the clock-driven reminders (`tick`) and the
+update loop. The rest sits in folders by role; `#[path]` on each `mod` keeps the module names
+(`crate::tray`, `crate::media`...) independent of the folders.
+
+| Folder | Files | What |
+|---|---|---|
+| `ui/` | `draw.rs`, `controls.rs`, `popup.rs`, `demo.rs` | shapes and icons; Settings rows; the resting notch and pop-ups; screenshot demo data |
+| `ui/pages/` | `mod.rs` + one file per page | Music, Pomodoro, Water, Shelf, To-do, Prayer, Widgets, Today, Ask, Settings |
+| `platform/` | `tray.rs`, `system.rs`, `media.rs`, `dragout.rs`, `ocr.rs` | Windows: tray and hotkeys, full screen / battery / startup, media and notifications, drag-out, OCR |
+| `net/` | `online.rs`, `calendar.rs` | weather, rates and Gemini; the iCal calendar |
+| `logic/` | `data.rs`, `calc.rs`, `prayer.rs`, `i18n.rs` | settings and saved files; the calculator; prayer times; translations |
+
+The Prayer page's module is `prayer_page` (file `ui/pages/prayer.rs`) so it doesn't hide
+`crate::prayer`. The i18n test reads every `.rs` under `src/`, in any folder.
