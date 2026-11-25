@@ -31,7 +31,7 @@ cargo clippy --release
 
 `notch.exe --screenshot <file.png>` renders one frame and exits. Add `--page N` (page id),
 `--demo` (sample data for Music, Water, To-do, Today, Note, Ask), `--resting`, `--settings [section]`,
-`--ask`, `--clips`, `--lang N` (0 EN, 1 VI, 2 ZH, 3 FR), `--weather SYMBOL`, or
+`--ask`, `--clips`, `--select` (with `--page 8 --demo`: choosing notes), `--lang N` (0 EN, 1 VI, 2 ZH, 3 FR), `--weather SYMBOL`, or
 `--popup welcome|taken|notice|notice-long|notice-logo|song|bluetooth|brightness`. Compare pages
 before and after a change this way; only the clock text should differ between runs.
 

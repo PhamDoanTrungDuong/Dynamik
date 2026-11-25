@@ -157,6 +157,9 @@ Reorder or hide pages in **Settings › Pages**.
   note (not text marked private, as with the Clipboard).
 - **Click** a note to copy it, **drag** it into a chat or a folder, click its **circle** to mark it
   done (struck through, removed 3 days later); **right-click** to pin, finish or delete.
+- **Select** ticks notes to delete several at once (**Select all**, then **Delete** twice to
+  confirm). Settings › Note: how long finished notes stay (1 / 3 / 7 days or never) and whether
+  each note shows when it was written.
 - **`Ctrl + Alt + N`** opens this page with the cursor in the box, from anywhere.
 - Pinned notes first, then the newest; up to 200 notes of up to 500 characters, kept in `notes.txt`.
 

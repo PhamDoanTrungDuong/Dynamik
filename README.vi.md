@@ -155,6 +155,9 @@ Sắp xếp lại hoặc ẩn từng trang trong **Settings › Pages**.
   đánh dấu riêng tư, giống Clipboard).
 - **Click** một ghi chú để chép, **kéo** ra ô chat hoặc thư mục, bấm **vòng tròn** để đánh dấu xong
   (gạch ngang, tự xóa sau 3 ngày); **click phải** để ghim, đánh dấu xong hoặc xóa.
+- **Chọn** để đánh dấu nhiều ghi chú rồi xóa một lần (**Chọn tất cả**, bấm **Xóa** 2 lần để xác
+  nhận). Settings › Ghi chú: ghi chú đã xong tự xóa sau bao lâu (1 / 3 / 7 ngày hoặc không bao giờ) và
+  có hiện giờ ghi trên mỗi ghi chú hay không.
 - **`Ctrl + Alt + N`** mở trang này với con trỏ sẵn trong ô gõ, từ bất kỳ đâu.
 - Ghi chú đã ghim lên đầu, rồi tới cái mới nhất; tối đa 200 ghi chú, mỗi cái tối đa 500 ký tự, lưu
   trong `notes.txt`.

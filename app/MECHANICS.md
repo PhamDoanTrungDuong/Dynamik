@@ -430,9 +430,13 @@ set), back to ~32 MB within 20 s of closing. Cover art and app logos account for
   rearranged one keeps its order with Note at the end; hidden pages stay hidden.
 - `notes.txt`, one note per line: `created|flags|text`, flags `p` (pinned) and `d2026-11-25` (done
   that day), text escaped like the clipboard history (`\n`, `\\`). Plain text, by choice.
-- After every change: notes are cut to 500 characters, ones done over 3 days ago are dropped, at
-  most 200 are kept (oldest done first, then the oldest unpinned open one), sorted pinned, open,
-  done, newest first.
+- After every change (and at start): notes are cut to 500 characters, ones done longer ago than
+  Settings › Note says (1, 3 or 7 days, or never; 3 by default) are dropped, at most 200 are kept
+  (oldest done first, then the oldest unpinned open one), sorted pinned, open, done, newest first.
+  A line of `notes.txt` that doesn't read sends the whole file to `notes.bak` before the next save.
+- Each note is a card: done circle, a push pin when pinned, the text on one line, and when it was
+  written on the right (Settings › Note can hide it). "Copied" marks the clicked note by its place,
+  since texts can repeat. "Select" ticks notes; "Delete (N)" needs a second click within 3 s.
 - Enter in the box saves (and keeps the cursor there); the clipboard button adds the clipboard's
   text unless it is marked private (`tray::clipboard_private`). Click copies ("Copied" for 2 s),
   drag goes out through `dragout::text`, the circle toggles done, right-click pins / finishes / deletes.

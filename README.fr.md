@@ -162,6 +162,9 @@ Réordonnez ou masquez les pages dans **Settings › Pages**.
 - **Cliquez** sur une note pour la copier, **faites-la glisser** dans une conversation ou un dossier,
   cliquez sur son **cercle** pour la terminer (barrée, supprimée 3 jours plus tard) ; **clic droit**
   pour épingler, terminer ou supprimer.
+- **Choisir** coche plusieurs notes à supprimer d'un coup (**Tout choisir**, puis **Supprimer** deux
+  fois pour confirmer). Réglages › Notes : durée de conservation des notes terminées (1 / 3 / 7 jours
+  ou jamais) et affichage de l'heure de chaque note.
 - **`Ctrl + Alt + N`** ouvre cette page avec le curseur dans le champ, de n'importe où.
 - Les notes épinglées d'abord, puis les plus récentes ; jusqu'à 200 notes de 500 caractères au plus,
   gardées dans `notes.txt`.
