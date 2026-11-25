@@ -494,6 +494,17 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("Not done", "Chưa xong", "未完成", "Pas terminé"),
     ("Delete", "Xóa", "删除", "Supprimer"),
     ("Click to copy · drag out · right-click for more", "Click để chép · kéo ra ngoài · click phải để xem thêm", "点击复制 · 拖出 · 右键更多", "Clic pour copier · glisser · clic droit pour plus"),
+    ("Select", "Chọn", "选择", "Choisir"),
+    ("Select all", "Chọn tất cả", "全选", "Tout choisir"),
+    ("Unselect all", "Bỏ chọn tất cả", "全不选", "Tout retirer"),
+    ("Delete ({})", "Xóa ({})", "删除 ({})", "Supprimer ({})"),
+    ("Finished notes go after", "Ghi chú đã xong tự xóa sau", "已完成的便签删除于", "Notes terminées supprimées après"),
+    ("1 day", "1 ngày", "1 天", "1 jour"),
+    ("3 days", "3 ngày", "3 天", "3 jours"),
+    ("7 days", "7 ngày", "7 天", "7 jours"),
+    ("Never", "Không bao giờ", "从不", "Jamais"),
+    ("Show when each note was written", "Hiện giờ ghi của mỗi ghi chú", "显示每条便签的时间", "Afficher l'heure de chaque note"),
+    ("Shortcut — Ctrl+Alt+N opens Note from anywhere", "Phím tắt — Ctrl+Alt+N mở Ghi chú từ bất kỳ đâu", "快捷键 — 在任何地方按 Ctrl+Alt+N 打开便签", "Raccourci — Ctrl+Alt+N ouvre les notes de partout"),
 ];
 
 #[cfg(test)]

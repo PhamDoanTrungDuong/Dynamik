@@ -66,7 +66,7 @@ pub(crate) fn demo_notes() -> Vec<Note> {
         Note { created: now - 3600, text: "Link tài liệu: drive.google.com/notch-spec".into(), pinned: false, done: None },
         Note { created: now - 9000, text: "Gửi báo cáo tuần cho chị Lan".into(), pinned: false, done: Some(today) },
     ];
-    tidy_notes(&mut n, today);
+    tidy_notes(&mut n, today, 3);
     n
 }
 

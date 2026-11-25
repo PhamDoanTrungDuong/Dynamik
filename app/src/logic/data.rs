@@ -167,6 +167,8 @@ pub struct Settings {
     pub widget_right: usize,
     pub week_monday: bool,
     pub show_clock: bool,         // the date and time in the notch
+    pub note_done_days: u32,      // finished notes go this many days later (0: never)
+    pub note_time: bool,          // each note shows when it was written
     pub page_order: Vec<usize>,   // every page id once, in the order they are paged through
     pub pages_hidden: Vec<usize>, // page ids left out
 }
@@ -310,6 +312,8 @@ simple_settings! {
     widget_right = 1usize;
     week_monday = false;
     show_clock = true;
+    note_done_days = 3u32, |v| if NOTE_DONE_DAYS.contains(&v) { v } else { 3 };
+    note_time = true;
 }
 
 impl Settings {
@@ -399,7 +403,8 @@ fn task_from(l: &str) -> Option<Task> {
 
 pub const NOTE_MAX_CHARS: usize = 500;
 pub const NOTES_MAX: usize = 200;
-const NOTE_DONE_KEEP_DAYS: i64 = 3; // a finished note goes this many days after it was done
+/// How long a finished note stays, as Settings offers it (days; 0 keeps it).
+pub const NOTE_DONE_DAYS: [u32; 4] = [1, 3, 7, 0];
 
 /// A quick note on the Note page.
 #[derive(Clone, PartialEq, Debug)]
@@ -445,15 +450,15 @@ fn note_from(l: &str) -> Option<Note> {
     Some(Note { created, text, pinned: flags.split(',').any(|f| f == "p"), done })
 }
 
-/// Cuts long notes, drops ones done over NOTE_DONE_KEEP_DAYS ago, keeps at most NOTES_MAX (the
+/// Cuts long notes, drops ones done over `done_days` ago (0: never), keeps at most NOTES_MAX (the
 /// oldest done ones go first, then the oldest open ones), and sorts: pinned, open, done; newest first.
-pub fn tidy_notes(n: &mut Vec<Note>, today: NaiveDate) {
+pub fn tidy_notes(n: &mut Vec<Note>, today: NaiveDate, done_days: u32) {
     for note in n.iter_mut() {
         if note.text.chars().count() > NOTE_MAX_CHARS {
             note.text = note.text.chars().take(NOTE_MAX_CHARS).collect();
         }
     }
-    n.retain(|note| note.done.is_none_or(|d| (today - d).num_days() <= NOTE_DONE_KEEP_DAYS));
+    n.retain(|note| done_days == 0 || note.done.is_none_or(|d| (today - d).num_days() <= done_days as i64));
     let rank = |note: &Note| if note.done.is_some() { 2 } else if note.pinned { 0 } else { 1 };
     n.sort_by(|a, b| rank(a).cmp(&rank(b)).then(b.created.cmp(&a.created)));
     while n.len() > NOTES_MAX {
@@ -530,11 +535,11 @@ mod tests {
     #[test]
     fn settings_text_is_unchanged() {
         // Every key and default exactly as settings.txt held them before the keys were listed once.
-        const GOLDEN: [&str; 67] = [
+        const GOLDEN: [&str; 69] = [
             "app_icon=0", "auto_next=false", "battery_low=20", "cal_early=true", "clipboard=false", "clipboard_keep=false",
             "clipboard_max=5", "fahrenheit=false", "focus=25", "focus_quiet=false", "hide_fullscreen=true",
             "hud_brightness=true", "hud_caps=true", "hud_language=true", "hud_volume=true", "language=1", "long_break=15",
-            "lyrics=true", "mascot=true", "minimal=true", "notification_preview=false", "notifications=true",
+            "lyrics=true", "mascot=true", "minimal=true", "note_done_days=3", "note_time=true", "notification_preview=false", "notifications=true",
             "open_click=false", "page_order=0,1,2,3,4,8,5,6,7", "pages_hidden=", "popup_battery=true", "popup_bluetooth=true",
             "popup_headset_off=true", "popup_song=true", "popup_wifi=true", "prayer=false", "prayer_adj_ashar=10",
             "prayer_adj_dzuhur=10", "prayer_adj_isya=10", "prayer_adj_maghrib=10", "prayer_adj_subuh=10", "prayer_asr=0",
@@ -612,20 +617,30 @@ mod tests {
         let ago = |d: i64| today - chrono::Duration::days(d);
         let note = |created: i64, pinned: bool, done: Option<NaiveDate>| Note { created, text: format!("n{created}"), pinned, done };
         let mut n = vec![note(1, false, None), note(2, true, None), note(3, false, Some(ago(1))), note(4, false, Some(ago(4))), note(5, false, None)];
-        tidy_notes(&mut n, today);
+        tidy_notes(&mut n, today, 3);
         // Pinned first, then open newest first, then done; done over 3 days ago is gone.
         assert_eq!(n.iter().map(|n| n.created).collect::<Vec<_>>(), vec![2, 5, 1, 3]);
         let mut long = vec![Note { created: 1, text: "x".repeat(600), pinned: false, done: None }];
-        tidy_notes(&mut long, today);
+        tidy_notes(&mut long, today, 3);
         assert_eq!(long[0].text.chars().count(), NOTE_MAX_CHARS);
         // Too many: the oldest done ones go first, then the oldest open ones.
         let mut many: Vec<Note> = (0..NOTES_MAX as i64).map(|i| note(100 + i, false, None)).collect();
         many.push(note(1, false, Some(today)));
         many.push(note(10_000, false, None));
-        tidy_notes(&mut many, today);
+        tidy_notes(&mut many, today, 3);
         assert_eq!(many.len(), NOTES_MAX);
         assert!(many.iter().all(|n| n.created != 1), "the done one goes first");
         assert!(many.iter().any(|n| n.created == 10_000) && many.iter().all(|n| n.created != 100), "then the oldest open one");
+        // Settings › Note: finished notes kept for good (0), or only a day.
+        let old_done = || vec![note(1, false, Some(ago(30))), note(2, false, Some(ago(2)))];
+        let mut keep = old_done();
+        tidy_notes(&mut keep, today, 0);
+        assert_eq!(keep.len(), 2);
+        let mut day = old_done();
+        tidy_notes(&mut day, today, 1);
+        assert!(day.is_empty());
+        assert_eq!(Settings::from_text("note_done_days=5", "").note_done_days, 3); // not a choice
+        assert_eq!(Settings::from_text("note_done_days=0", "").note_done_days, 0);
     }
 
     #[test]

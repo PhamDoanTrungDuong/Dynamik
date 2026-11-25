@@ -314,6 +314,8 @@ struct App {
     note_draft: String, // the Note page's input line
     note_focus: bool,   // put the cursor in the note box on the next frame (Ctrl+Alt+N)
     note_copied: Option<(usize, Instant)>, // which note was just copied (by place: texts can repeat)
+    note_select: Option<HashSet<usize>>, // choosing notes to delete: the places ticked
+    note_delete_at: Option<Instant>,      // the first click of "Delete (N)" (a second within 3 s deletes)
     form: Option<(Option<usize>, String, String, u16)>, // (editing index, title, "HH:MM", minutes)
     todo_edit: bool,
     // water
@@ -500,8 +502,10 @@ impl App {
             w: Spring { x: start.x, v: 0.0 }, h: Spring { x: start.y, v: 0.0 }, content: Spring { x: 0.0, v: 0.0 }, spring: SPRING, last_target: start,
             tasks: load_tasks(), form: None, todo_edit: false,
             // Tidied at start too, so notes done over 3 days ago are gone before the first change.
-            notes: if shot_notes { demo_notes() } else { let mut n = load_notes(); tidy_notes(&mut n, now.date()); n },
-            note_draft: String::new(), note_focus: false, note_copied: None,
+            notes: if shot_notes { demo_notes() } else { let mut n = load_notes(); tidy_notes(&mut n, now.date(), s.note_done_days); n },
+            note_draft: String::new(), note_focus: false, note_copied: None, note_delete_at: None,
+            // A screenshot of choosing notes: --page 8 --demo --select (the first two ticked).
+            note_select: (shot_notes && std::env::args().any(|a| a == "--select")).then(|| HashSet::from([0, 1])),
             water_day, drank, in_bottle, hours, fired, water_snooze: None, water_settings: false, reset_armed: None, settings_reset: None,
             // A screenshot can open a section: --settings 4.
             settings_tab: std::env::args().skip_while(|a| a != "--settings").nth(1).and_then(|n| n.parse().ok()).unwrap_or(0),

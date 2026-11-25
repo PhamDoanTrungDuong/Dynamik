@@ -2,11 +2,12 @@
 use super::*;
 
 /// The sections down the left, each with the colour of its icon tile.
-const SECTIONS: [(&str, Color32); 11] = [
+const SECTIONS: [(&str, Color32); 12] = [
     ("General", Color32::from_rgb(99, 99, 102)),
     ("Pomodoro", PURPLE),
     ("Water", BLUE),
     ("To-do", GREEN),
+    ("Note", Color32::from_rgb(132, 204, 22)),
     ("Prayer", Color32::from_rgb(88, 86, 214)),
     ("Shelf", ORANGE),
     ("Popups", RED),
@@ -16,7 +17,7 @@ const SECTIONS: [(&str, Color32); 11] = [
     ("Data", Color32::from_rgb(99, 99, 102)),
 ];
 const SIDE_W: f32 = 150.0;
-const SIDE_ROW: f32 = 34.0;
+const SIDE_ROW: f32 = 32.0; // twelve sections fit the 450-point panel
 
 /// The white mark on a section's tile.
 fn section_icon(p: &egui::Painter, c: Pos2, i: usize) {
@@ -37,27 +38,34 @@ fn section_icon(p: &egui::Painter, c: Pos2, i: usize) {
             p.add(Shape::line(vec![c + vec2(-3.0, 1.5), c + vec2(-0.8, 3.5), c + vec2(3.0, -0.2)], st));
         }
         4 => {
+            // A sheet with lines.
+            p.rect_stroke(Rect::from_center_size(c, vec2(11.0, 13.0)), 2.0, st, egui::StrokeKind::Middle);
+            for dy in [-2.5, 0.5, 3.5] {
+                p.line_segment([c + vec2(-2.8, dy), c + vec2(2.8, dy)], Stroke::new(1.2_f32, WHITE));
+            }
+        }
+        5 => {
             // A crescent: a white disc with the tile's colour cut out.
             p.circle_filled(c, 6.0, WHITE);
-            p.circle_filled(c + vec2(2.8, -2.0), 5.0, SECTIONS[4].1);
+            p.circle_filled(c + vec2(2.8, -2.0), 5.0, SECTIONS[5].1);
         }
-        5 => folder_icon(p, c, WHITE),
-        6 => {
+        6 => folder_icon(p, c, WHITE),
+        7 => {
             p.rect_stroke(Rect::from_center_size(c, vec2(13.0, 9.0)), 3.0, st, egui::StrokeKind::Middle);
             p.circle_filled(c + vec2(5.5, -4.5), 2.4, WHITE);
         }
-        7 => {
+        8 => {
             for (k, h) in [5.0f32, 9.0, 6.0, 10.0].iter().enumerate() {
                 let x = c.x - 4.5 + k as f32 * 3.0;
                 p.line_segment([pos2(x, c.y + h / 2.0), pos2(x, c.y - h / 2.0)], Stroke::new(1.8_f32, WHITE));
             }
         }
-        8 => {
+        9 => {
             // A four-pointed spark.
             let pts = (0..8).map(|k| c + Vec2::angled(k as f32 * PI / 4.0 - PI / 2.0) * if k % 2 == 0 { 6.5 } else { 2.0 }).collect();
             p.add(Shape::convex_polygon(pts, WHITE, Stroke::NONE));
         }
-        9 => {
+        10 => {
             for (dx, dy) in [(-3.0, -3.0), (3.0, -3.0), (-3.0, 3.0), (3.0, 3.0)] {
                 p.rect_filled(Rect::from_center_size(c + vec2(dx, dy), vec2(4.6, 4.6)), 1.2, WHITE);
             }
@@ -195,6 +203,11 @@ impl App {
                         });
                     }
                     4 => card(ui, "", |ui| {
+                        pick(ui, "Finished notes go after", &mut s.note_done_days, &NOTE_DONE_DAYS, &["1 day", "3 days", "7 days", "Never"]);
+                        switch_row(ui, "Show when each note was written", &mut s.note_time);
+                        row(ui, "Shortcut — Ctrl+Alt+N opens Note from anywhere", |_| {});
+                    }),
+                    5 => card(ui, "", |ui| {
                         switch_row(ui, "Show prayer times — worked out on this PC, for any city", &mut s.prayer);
                         ui.add_enabled_ui(s.prayer, |ui| {
                             let names = place_names();
@@ -235,7 +248,7 @@ impl App {
                             ui.add_space(8.0);
                         });
                     }),
-                    5 => card(ui, "", |ui| {
+                    6 => card(ui, "", |ui| {
                         switch_row(ui, "Start with an empty Shelf", &mut s.shelf_clear);
                         switch_row(ui, "Clipboard history — text you copy, ready to paste again", &mut s.clipboard);
                         ui.add_enabled_ui(s.clipboard, |ui| {
@@ -243,7 +256,7 @@ impl App {
                             switch_row(ui, "Remember after restart", &mut s.clipboard_keep);
                         });
                     }),
-                    6 => {
+                    7 => {
                         card(ui, "", |ui| {
                             switch_row(ui, "Volume", &mut s.hud_volume);
                             switch_row(ui, "Brightness", &mut s.hud_brightness);
@@ -261,16 +274,16 @@ impl App {
                             switch_row(ui, "Today page — recent notifications and your week", &mut s.today_page);
                         });
                     }
-                    7 => card(ui, "", |ui| {
+                    8 => card(ui, "", |ui| {
                         switch_row(ui, "Show lyrics — from LRCLIB, a community lyrics database (after restart)", &mut s.lyrics);
                     }),
-                    8 => card(ui, "", |ui| {
+                    9 => card(ui, "", |ui| {
                         // Kept sealed with Windows DPAPI, never in settings.txt.
                         if secret_row(ui, "Gemini key — free at aistudio.google.com/apikey; kept sealed on this PC", gemini) {
                             write_secret(GEMINI_FILE, gemini.trim());
                         }
                     }),
-                    9 => card(ui, "", |ui| {
+                    10 => card(ui, "", |ui| {
                         combo(ui, "Left widget", &mut s.widget_left, &WIDGETS);
                         combo(ui, "Right widget", &mut s.widget_right, &WIDGETS);
                         if s.widget_left == WEATHER_WIDGET || s.widget_right == WEATHER_WIDGET {
