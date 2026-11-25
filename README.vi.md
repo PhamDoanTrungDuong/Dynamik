@@ -44,6 +44,7 @@ Nằm gọn ở mép trên màn hình, báo những gì đang diễn ra và mở
 | 💧 **Water** | Nhắc uống nước theo khung giờ, hoàn tác, lịch sử 60 ngày |
 | 📁 **Shelf & Clipboard** | Giữ file và chữ đã copy, kéo ra ô chat; không lưu mật khẩu |
 | ✅ **To-do & Google Lịch** | Việc có giờ, sự kiện lịch hôm nay, nhắc trước 10 phút |
+| 📝 **Note** | Ghi chú công việc nhanh: ghim, đánh dấu xong, chép hoặc kéo ra, `Ctrl + Alt + N` |
 | 🕌 **Prayer** | Giờ cầu nguyện 11 phương pháp, vòng cung mặt trời, Hồi lịch |
 | 🧩 **Widgets** | Thời tiết, giờ thế giới, đếm ngược (có Tết), pin, mặt trăng… |
 | 🔔 **Pop-up** | Âm lượng, pin, Wi-Fi, tai nghe, đang phát, thông báo Windows |
@@ -58,6 +59,7 @@ Nằm gọn ở mép trên màn hình, báo những gì đang diễn ra và mở
 | Mở Settings | Click phải vào notch (click phải lần nữa để đóng) |
 | Hỏi nhanh, tính toán, dịch | `Ctrl + Alt + Space` |
 | Lấy chữ trên màn hình (OCR) | `Ctrl + Alt + T`, rồi kéo chọn vùng |
+| Ghi chú nhanh | `Ctrl + Alt + N` |
 | Menu khay hệ thống | Click phải icon ở khay: Start with Windows, Mascot, Minimal notch, About, Exit |
 
 <table>
@@ -144,6 +146,18 @@ Sắp xếp lại hoặc ẩn từng trang trong **Settings › Pages**.
 - **Google Lịch:** dán *Secret address in iCal format* của lịch vào Settings › Google Calendar (được mã
   hóa, chỉ lưu trên máy). Sự kiện hôm nay hiện đầu To-do (chỉ đọc), nhắc trước 10 phút (tắt được) và lúc
   bắt đầu; có sự kiện lặp lại, buổi bị dời hoặc hủy, sự kiện qua đêm. Đọc lại 15 phút một lần.
+
+### 📝 Note
+
+<img src="app/shots/note.png" width="560" alt="Trang Note với một ghi chú đã ghim">
+
+- Gõ ghi chú rồi nhấn **Enter**; nút cạnh ô gõ biến chữ vừa copy thành ghi chú (trừ nội dung được
+  đánh dấu riêng tư, giống Clipboard).
+- **Click** một ghi chú để chép, **kéo** ra ô chat hoặc thư mục, bấm **vòng tròn** để đánh dấu xong
+  (gạch ngang, tự xóa sau 3 ngày); **click phải** để ghim, đánh dấu xong hoặc xóa.
+- **`Ctrl + Alt + N`** mở trang này với con trỏ sẵn trong ô gõ, từ bất kỳ đâu.
+- Ghi chú đã ghim lên đầu, rồi tới cái mới nhất; tối đa 200 ghi chú, mỗi cái tối đa 500 ký tự, lưu
+  trong `notes.txt`.
 
 ### 🕌 Prayer
 
@@ -254,7 +268,7 @@ Click phải vào notch để mở, **Esc** hoặc **Close** để đóng. Đổ
 | Dữ liệu | **Mở** thư mục dữ liệu · **Khôi phục** cài đặt mặc định (bấm 2 lần; nước, việc, lịch sử, khóa và lịch vẫn giữ) |
 
 Dữ liệu nằm ở `%LOCALAPPDATA%\MyNotch`: `settings.txt`, `water.txt`, `water_log.txt`, `tasks.txt`,
-`focus.txt`, `shelf.txt`, `clipboard.txt` (chỉ khi bật "Remember after restart"). Khóa Gemini và địa
+`focus.txt`, `shelf.txt`, `notes.txt`, `clipboard.txt` (chỉ khi bật "Remember after restart"). Khóa Gemini và địa
 chỉ lịch nằm riêng trong `gemini.key` và `calendar.key`, được mã hóa bằng DPAPI của Windows.
 
 ## Hiệu năng

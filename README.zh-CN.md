@@ -44,6 +44,7 @@
 | 💧 **Water** | 在设定时段内提醒喝水、撤销、60 天记录 |
 | 📁 **Shelf & Clipboard** | 暂存文件和复制的文字，可拖进聊天框；从不保存密码 |
 | ✅ **To-do & Google 日历** | 定时任务、今天的日历事件、提前 10 分钟提醒 |
+| 📝 **Note** | 快速工作便签：置顶、标记完成、复制或拖出，`Ctrl + Alt + N` |
 | 🕌 **Prayer** | 11 种算法的礼拜时间、太阳弧线、伊斯兰历日期 |
 | 🧩 **Widgets** | 天气、世界时钟、倒数日（含春节）、电池、月相… |
 | 🔔 **弹窗** | 音量、电池、Wi-Fi、耳机、正在播放、Windows 通知 |
@@ -58,6 +59,7 @@
 | 打开设置 | 右键点击刘海（再右键一次关闭） |
 | 提问、计算、翻译 | `Ctrl + Alt + Space` |
 | 提取屏幕文字 (OCR) | `Ctrl + Alt + T`，然后拖选一块区域 |
+| 写一条便签 | `Ctrl + Alt + N` |
 | 托盘菜单 | 右键托盘图标：Start with Windows、Mascot、Minimal notch、About、Exit |
 
 <table>
@@ -125,6 +127,15 @@
 - 可设时间（HH:MM，不设时间则留空）和时长的任务；点击标记完成（按天计，新的一天重新打开）；用 "Edit Task" 修改或删除。
 - 开始和结束时提醒，每天一次，带 **Later** 按钮（5 / 10 / 15 分钟）。
 - **Google 日历：** 把日历的 *Secret address in iCal format*（iCal 格式的私密地址）粘贴到 Settings › Google Calendar（已加密，只保存在本机）。今天的事件显示在 To-do 顶部（只读），提前 10 分钟（可关闭）和开始时提醒；支持重复事件、改期或取消的场次、跨夜事件。每 15 分钟重新读取一次。
+
+### 📝 Note
+
+<img src="app/shots/note.png" width="560" alt="带置顶便签的 Note 页面">
+
+- 输入便签后按 **回车**；输入框旁的按钮把刚复制的文字存为便签（与 Clipboard 一样，不收取标记为隐私的内容）。
+- **点击** 便签即复制，**拖动** 到聊天框或文件夹，点击 **圆圈** 标记完成（加删除线，3 天后自动删除）；**右键** 置顶、完成或删除。
+- 在任何地方按 **`Ctrl + Alt + N`** 打开此页，光标已在输入框中。
+- 置顶的在最前，其次是最新的；最多 200 条，每条最多 500 个字符，保存在 `notes.txt`。
 
 ### 🕌 Prayer
 
@@ -217,7 +228,7 @@
 | Pages | ↑ ↓ 调整顺序，开关隐藏（始终至少保留 1 页） |
 | 数据 | **打开** 数据文件夹 · **恢复** 默认设置（点两次；饮水、任务、历史、密钥和日历会保留） |
 
-数据位于 `%LOCALAPPDATA%\MyNotch`：`settings.txt`、`water.txt`、`water_log.txt`、`tasks.txt`、`focus.txt`、`shelf.txt`、`clipboard.txt`（仅在开启 "Remember after restart" 时）。Gemini 密钥和日历地址单独保存在 `gemini.key` 和 `calendar.key` 中，使用 Windows DPAPI 加密。
+数据位于 `%LOCALAPPDATA%\MyNotch`：`settings.txt`、`water.txt`、`water_log.txt`、`tasks.txt`、`focus.txt`、`shelf.txt`、`notes.txt`、`clipboard.txt`（仅在开启 "Remember after restart" 时）。Gemini 密钥和日历地址单独保存在 `gemini.key` 和 `calendar.key` 中，使用 Windows DPAPI 加密。
 
 ## 性能
 

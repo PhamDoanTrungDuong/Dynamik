@@ -423,6 +423,22 @@ set), back to ~32 MB within 20 s of closing. Cover art and app logos account for
   chosen one shows on the right under its heading, rows split by thin lines. General holds Pages,
   To-do holds Google Calendar, Popups holds Notifications. The panel is 660 x 450.
 
+## Note page (2026-11-25, not in the original)
+
+- Page id 8 (ids are saved in `page_order`, so the new page takes the next id) shown after To-do.
+  A `page_order` saved before it: the untouched usual order becomes the new usual order; a
+  rearranged one keeps its order with Note at the end; hidden pages stay hidden.
+- `notes.txt`, one note per line: `created|flags|text`, flags `p` (pinned) and `d2026-11-25` (done
+  that day), text escaped like the clipboard history (`\n`, `\\`). Plain text, by choice.
+- After every change: notes are cut to 500 characters, ones done over 3 days ago are dropped, at
+  most 200 are kept (oldest done first, then the oldest unpinned open one), sorted pinned, open,
+  done, newest first.
+- Enter in the box saves (and keeps the cursor there); the clipboard button adds the clipboard's
+  text unless it is marked private (`tray::clipboard_private`). Click copies ("Copied" for 2 s),
+  drag goes out through `dragout::text`, the circle toggles done, right-click pins / finishes / deletes.
+- Ctrl+Alt+N (`RegisterHotKey`, like Ask and OCR) opens the notch on Note with the cursor in the
+  box, un-hiding the page if needed; when another app owns it, the "shortcut used" hint lists it.
+
 ## Code layout (2026-11-25)
 
 `src/main.rs` starts the app and holds its state, the clock-driven reminders (`tick`) and the

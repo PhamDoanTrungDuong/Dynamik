@@ -44,6 +44,7 @@ It sits at the top edge of the screen, shows what's going on and opens into a sm
 | 💧 **Water** | Drink reminders within set hours, undo, 60 days of history |
 | 📁 **Shelf & Clipboard** | Keep files and copied text, drag them into a chat box; passwords are never stored |
 | ✅ **To-do & Google Calendar** | Timed tasks, today's calendar events, a reminder 10 minutes before |
+| 📝 **Note** | Quick work notes: pin, mark done, copy or drag out, `Ctrl + Alt + N` |
 | 🕌 **Prayer** | Prayer times with 11 methods, sun arc, Hijri date |
 | 🧩 **Widgets** | Weather, world clock, countdown (including Tết), battery, moon… |
 | 🔔 **Pop-ups** | Volume, battery, Wi-Fi, headset, now playing, Windows notifications |
@@ -58,6 +59,7 @@ It sits at the top edge of the screen, shows what's going on and opens into a sm
 | Open Settings | Right-click the notch (right-click again to close) |
 | Ask, calculate, translate | `Ctrl + Alt + Space` |
 | Grab text from the screen (OCR) | `Ctrl + Alt + T`, then drag over an area |
+| Write a quick note | `Ctrl + Alt + N` |
 | Tray menu | Right-click the tray icon: Start with Windows, Mascot, Minimal notch, About, Exit |
 
 <table>
@@ -146,6 +148,17 @@ Reorder or hide pages in **Settings › Pages**.
   (encrypted, kept on this PC only). Today's events show at the top of To-do (read-only), with a reminder
   10 minutes before (can be turned off) and at the start; repeating events, moved or cancelled ones and
   overnight events all work. Read again every 15 minutes.
+
+### 📝 Note
+
+<img src="app/shots/note.png" width="560" alt="Note page with a pinned note">
+
+- Type a note and press **Enter**; the button beside the box turns the text you just copied into a
+  note (not text marked private, as with the Clipboard).
+- **Click** a note to copy it, **drag** it into a chat or a folder, click its **circle** to mark it
+  done (struck through, removed 3 days later); **right-click** to pin, finish or delete.
+- **`Ctrl + Alt + N`** opens this page with the cursor in the box, from anywhere.
+- Pinned notes first, then the newest; up to 200 notes of up to 500 characters, kept in `notes.txt`.
 
 ### 🕌 Prayer
 
@@ -257,7 +270,7 @@ a restart.
 | Data | **Open** the data folder · **Restore** default settings (tap twice; water, tasks, history, keys and calendar are kept) |
 
 Data lives in `%LOCALAPPDATA%\MyNotch`: `settings.txt`, `water.txt`, `water_log.txt`, `tasks.txt`,
-`focus.txt`, `shelf.txt`, `clipboard.txt` (only with "Remember after restart" on). The Gemini key and the
+`focus.txt`, `shelf.txt`, `notes.txt`, `clipboard.txt` (only with "Remember after restart" on). The Gemini key and the
 calendar address are kept apart in `gemini.key` and `calendar.key`, encrypted with Windows DPAPI.
 
 ## Performance

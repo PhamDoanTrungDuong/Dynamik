@@ -44,6 +44,7 @@ Elle se loge en haut de l'écran, montre ce qui se passe et s'ouvre en un petit 
 | 💧 **Water** | Rappels pour boire sur une plage horaire, annuler, 60 jours d'historique |
 | 📁 **Shelf & Clipboard** | Garde fichiers et textes copiés, à glisser dans une conversation ; jamais de mots de passe |
 | ✅ **To-do & Google Agenda** | Tâches à heure fixe, événements du jour, rappel 10 minutes avant |
+| 📝 **Note** | Notes de travail rapides : épingler, terminer, copier ou glisser, `Ctrl + Alt + N` |
 | 🕌 **Prayer** | Heures de prière avec 11 méthodes, arc solaire, date hégirienne |
 | 🧩 **Widgets** | Météo, horloge mondiale, compte à rebours (y compris Tết), batterie, lune… |
 | 🔔 **Pop-ups** | Volume, batterie, Wi-Fi, casque, lecture en cours, notifications Windows |
@@ -58,6 +59,7 @@ Elle se loge en haut de l'écran, montre ce qui se passe et s'ouvre en un petit 
 | Ouvrir les paramètres | Clic droit sur l'encoche (encore un clic droit pour fermer) |
 | Demander, calculer, traduire | `Ctrl + Alt + Space` |
 | Copier du texte à l'écran (OCR) | `Ctrl + Alt + T`, puis sélectionnez une zone |
+| Écrire une note rapide | `Ctrl + Alt + N` |
 | Menu de la zone de notification | Clic droit sur l'icône : Start with Windows, Mascot, Minimal notch, About, Exit |
 
 <table>
@@ -150,6 +152,19 @@ Réordonnez ou masquez les pages dans **Settings › Pages**.
   Calendar (chiffrée, gardée sur ce PC uniquement). Les événements du jour s'affichent en haut de To-do
   (lecture seule), avec un rappel 10 minutes avant (désactivable) et au début ; les événements
   récurrents, déplacés ou annulés et ceux qui passent minuit sont gérés. Relu toutes les 15 minutes.
+
+### 📝 Note
+
+<img src="app/shots/note.png" width="560" alt="Page Note avec une note épinglée">
+
+- Écrivez une note puis **Entrée** ; le bouton à côté du champ transforme le texte que vous venez de
+  copier en note (pas un texte marqué privé, comme pour le Clipboard).
+- **Cliquez** sur une note pour la copier, **faites-la glisser** dans une conversation ou un dossier,
+  cliquez sur son **cercle** pour la terminer (barrée, supprimée 3 jours plus tard) ; **clic droit**
+  pour épingler, terminer ou supprimer.
+- **`Ctrl + Alt + N`** ouvre cette page avec le curseur dans le champ, de n'importe où.
+- Les notes épinglées d'abord, puis les plus récentes ; jusqu'à 200 notes de 500 caractères au plus,
+  gardées dans `notes.txt`.
 
 ### 🕌 Prayer
 
@@ -262,7 +277,7 @@ aussitôt et conservé après un redémarrage.
 | Données | **Ouvrir** le dossier des données · **Restaurer** les paramètres par défaut (deux appuis ; eau, tâches, historique, clés et agenda sont conservés) |
 
 Les données sont dans `%LOCALAPPDATA%\MyNotch` : `settings.txt`, `water.txt`, `water_log.txt`,
-`tasks.txt`, `focus.txt`, `shelf.txt`, `clipboard.txt` (seulement avec « Remember after restart »). La clé
+`tasks.txt`, `focus.txt`, `shelf.txt`, `notes.txt`, `clipboard.txt` (seulement avec « Remember after restart »). La clé
 Gemini et l'adresse de l'agenda sont à part dans `gemini.key` et `calendar.key`, chiffrées avec DPAPI de
 Windows.
 
