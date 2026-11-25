@@ -505,7 +505,21 @@ mod tests {
 
     #[test]
     fn every_phrase_the_app_asks_for_is_in_the_table() {
-        for src in [include_str!("main.rs"), include_str!("tray.rs")] {
+        // Every source file, in any folder (this one's own tests ask for a phrase that isn't listed).
+        fn sources(dir: &std::path::Path, out: &mut Vec<String>) {
+            for e in std::fs::read_dir(dir).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    sources(&p, out);
+                } else if p.extension().is_some_and(|x| x == "rs") && p.file_name().is_some_and(|n| n != "i18n.rs") {
+                    out.push(std::fs::read_to_string(&p).unwrap());
+                }
+            }
+        }
+        let mut files = vec![];
+        sources(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut files);
+        assert!(files.len() > 10, "found only {} source files", files.len());
+        for src in files.iter().map(String::as_str) {
             for start in ["t(\"", "tr(\""] {
                 for (at, _) in src.match_indices(start) {
                     if src[..at].chars().next_back().is_some_and(|c| c.is_alphanumeric() || c == '_') {
