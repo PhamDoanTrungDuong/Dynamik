@@ -27,13 +27,19 @@ pub(crate) fn settings_style(ui: &mut egui::Ui) {
     ui.spacing_mut().scroll.bar_width = 4.0;
 }
 
-/// A titled group of rows on a dark rounded card.
+/// A group of rows on a dark rounded card, under its title (none for the section's first card,
+/// which sits under the section's own heading).
 pub(crate) fn card(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
     ui.add_space(10.0);
-    ui.label(egui::RichText::new(t(title).to_uppercase()).font(bold(11.0)).color(DIM));
-    ui.add_space(4.0);
+    if !title.is_empty() {
+        ui.label(egui::RichText::new(t(title).to_uppercase()).font(bold(11.0)).color(DIM));
+        ui.add_space(4.0);
+    }
     egui::Frame::new().fill(CARD).corner_radius(12).inner_margin(egui::Margin::symmetric(12, 2)).show(ui, |ui| {
         ui.set_width(ui.available_width());
+        // Rows draw a line above themselves, except the first one on the card.
+        let top = ui.cursor().top();
+        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("card_top"), top));
         add(ui);
     });
 }
@@ -62,12 +68,16 @@ pub(crate) fn row_label(ui: &mut egui::Ui, label: &str, h: f32) {
 
 /// One row: text on the left, the control on the right, centred in a fixed height.
 pub(crate) fn row(ui: &mut egui::Ui, label: &str, control: impl FnOnce(&mut egui::Ui)) {
-    let h = if label.contains(" — ") { 46.0 } else { 34.0 };
-    ui.allocate_ui_with_layout(vec2(ui.available_width(), h), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+    let h = if label.contains(" — ") { 48.0 } else { 38.0 };
+    let r = ui.allocate_ui_with_layout(vec2(ui.available_width(), h), egui::Layout::right_to_left(egui::Align::Center), |ui| {
         control(ui);
         ui.add_space(10.0);
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| row_text(ui, label));
-    });
+    }).response.rect;
+    let card_top = ui.ctx().data(|d| d.get_temp::<f32>(egui::Id::new("card_top"))).unwrap_or(f32::MIN);
+    if r.top() > card_top + 1.0 {
+        ui.painter().hline(r.x_range(), r.top(), Stroke::new(1.0_f32, Color32::from_gray(34)));
+    }
 }
 
 /// A switch like the Water page's, reported to screen readers as a checkbox with its label.

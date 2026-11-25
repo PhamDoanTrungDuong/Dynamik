@@ -418,6 +418,10 @@ set), back to ~32 MB within 20 s of closing. Cover art and app logos account for
   defaults, keeping the language, the water plan, Start with Windows, the location found and the
   welcome flag; tasks, history, keys and the calendar address are other files and stay.
 - Esc closes Settings.
+- Layout (2026-11-25): the 11 sections are listed down the left, each with a coloured icon tile
+  (General, Pomodoro, Water, To-do, Prayer, Shelf, Popups, Music, Ask Nusa, Widgets, Data); the
+  chosen one shows on the right under its heading, rows split by thin lines. General holds Pages,
+  To-do holds Google Calendar, Popups holds Notifications. The panel is 660 x 450.
 
 ## Code layout (2026-11-25)
 

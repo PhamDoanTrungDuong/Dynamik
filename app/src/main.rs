@@ -76,7 +76,7 @@ const NOTICE_TALL: Vec2 = vec2(420.0, 60.0); // ...and with the message on a sec
 const PEEK: Vec2 = vec2(56.0, 8.0); // the original's peek state: a thin bar while nothing is going on
 const EXPANDED: Vec2 = vec2(548.0, 184.0);
 const POPUP: Vec2 = vec2(404.0, 80.0);
-const SETTINGS: Vec2 = vec2(548.0, 430.0); // tall enough to read a section at a time
+const SETTINGS: Vec2 = vec2(660.0, 450.0); // the section list on the left, one section at a time on the right
 const LYRICS: Vec2 = vec2(676.0, 184.0); // Music page with lyrics beside it (reference picture 12)
 const WIN: Vec2 = vec2(LYRICS.x + 2.0 * EAR_MAX, SETTINGS.y);
 const EAR_MAX: f32 = 14.0; // side margin of the pill states in 0x140056ff1
@@ -321,6 +321,7 @@ struct App {
     water_settings: bool,
     reset_armed: Option<Instant>,
     settings_reset: Option<Instant>, // the first click of Settings › Restore (a second one within 3 s restores)
+    settings_tab: usize, // the Settings section chosen on the left
     last_drink: Option<(u32, usize, u32, Instant)>, // (ml, hour, ml taken from the bottle, when) for Undo
     water_log: BTreeMap<NaiveDate, u32>, // ml drunk on earlier days (water_log.txt)
     // focus
@@ -493,6 +494,8 @@ impl App {
             w: Spring { x: start.x, v: 0.0 }, h: Spring { x: start.y, v: 0.0 }, content: Spring { x: 0.0, v: 0.0 }, spring: SPRING, last_target: start,
             tasks: load_tasks(), form: None, todo_edit: false,
             water_day, drank, in_bottle, hours, fired, water_snooze: None, water_settings: false, reset_armed: None, settings_reset: None,
+            // A screenshot can open a section: --settings 4.
+            settings_tab: std::env::args().skip_while(|a| a != "--settings").nth(1).and_then(|n| n.parse().ok()).unwrap_or(0),
             // --page 2 --demo shows the Water page just after a 250 ml drink (with its Undo).
             water_log,
             last_drink: (!live && page == 2 && std::env::args().any(|a| a == "--demo")).then(|| (250, now.hour() as usize, 0, Instant::now())),
