@@ -483,6 +483,17 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("Minimal notch", "Notch tối giản", "极简刘海", "Encoche minimale"),
     ("About My Notch", "Giới thiệu My Notch", "关于 My Notch", "À propos de My Notch"),
     ("Version {}", "Phiên bản {}", "版本 {}", "Version {}"),
+    // The Note page.
+    ("Note", "Ghi chú", "便签", "Notes"),
+    ("Write a note…", "Ghi gì đó…", "写点什么…", "Écrire une note…"),
+    ("Add the copied text as a note", "Thêm chữ vừa copy thành ghi chú", "把复制的文字存为便签", "Ajouter le texte copié comme note"),
+    ("No notes yet", "Chưa có ghi chú", "还没有便签", "Pas encore de notes"),
+    ("Type above and press Enter", "Gõ ở trên rồi nhấn Enter", "在上方输入后按回车", "Écrivez ci-dessus puis Entrée"),
+    ("Pin", "Ghim", "置顶", "Épingler"),
+    ("Unpin", "Bỏ ghim", "取消置顶", "Désépingler"),
+    ("Not done", "Chưa xong", "未完成", "Pas terminé"),
+    ("Delete", "Xóa", "删除", "Supprimer"),
+    ("Click to copy · drag out · right-click for more", "Click để chép · kéo ra ngoài · click phải để xem thêm", "点击复制 · 拖出 · 右键更多", "Clic pour copier · glisser · clic droit pour plus"),
 ];
 
 #[cfg(test)]

@@ -56,6 +56,20 @@ pub(crate) fn demo_recent() -> Vec<(i64, media::Notice)> {
 }
 
 /// `--popup bluetooth|notice|brightness` with --screenshot --resting shows that pop-up, for checking its look.
+/// Notes for the --page 8 --demo screenshot: one pinned, two open, one done.
+pub(crate) fn demo_notes() -> Vec<Note> {
+    let now = Utc::now().timestamp();
+    let today = Local::now().date_naive();
+    let mut n = vec![
+        Note { created: now - 7200, text: "Gọi lại anh Tám về hợp đồng bản 2.0".into(), pinned: true, done: None },
+        Note { created: now - 600, text: "Họp 9h mai: chốt giá và lịch giao hàng".into(), pinned: false, done: None },
+        Note { created: now - 3600, text: "Link tài liệu: drive.google.com/notch-spec".into(), pinned: false, done: None },
+        Note { created: now - 9000, text: "Gửi báo cáo tuần cho chị Lan".into(), pinned: false, done: Some(today) },
+    ];
+    tidy_notes(&mut n, today);
+    n
+}
+
 pub(crate) fn demo_alert() -> Option<Alert> {
     let args: Vec<String> = std::env::args().collect();
     let which = args.iter().position(|a| a == "--popup").and_then(|i| args.get(i + 1))?;

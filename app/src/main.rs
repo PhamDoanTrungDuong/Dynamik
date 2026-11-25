@@ -111,7 +111,8 @@ const HUD: Vec2 = vec2(346.0, 64.0); // state 4 of 0x140056ff1 is 310 x 60 plus 
 
 // Page order of the original (its page dots): Music first, Widgets last.
 // Today comes last and only with its setting on (the original's `today_page`, off by default).
-const PAGES: [&str; 8] = ["Music", "Pomodoro", "Water", "Shelf", "To-do", "Prayer", "Widgets", "Today"];
+// Ids are fixed (they are saved in page_order); Note came later, so it is 8 but sits after To-do.
+const PAGES: [&str; PAGE_COUNT] = ["Music", "Pomodoro", "Water", "Shelf", "To-do", "Prayer", "Widgets", "Today", "Note"];
 const SHELF_PAGE: usize = 3;
 const TODAY_PAGE: usize = 7;
 // How many notifications the Today page remembers (estimated; not found in the original).
@@ -309,6 +310,9 @@ struct App {
     last_target: Vec2,
     // to-do
     tasks: Vec<Task>,
+    notes: Vec<Note>,
+    note_draft: String, // the Note page's input line
+    note_focus: bool,   // put the cursor in the note box on the next frame (Ctrl+Alt+N)
     form: Option<(Option<usize>, String, String, u16)>, // (editing index, title, "HH:MM", minutes)
     todo_edit: bool,
     // water
@@ -401,6 +405,7 @@ impl App {
         // A screenshot of the Today page needs the page on (in memory only; settings are saved only from Settings).
         s.today_page |= shot.is_some() && page == TODAY_PAGE;
         let shot_demo = shot.is_some() && page == TODAY_PAGE && std::env::args().any(|a| a == "--demo");
+        let shot_notes = shot.is_some() && page == NOTE_PAGE && std::env::args().any(|a| a == "--demo");
         let shot_demo_ask = shot.is_some() && std::env::args().any(|a| a == "--ask") && std::env::args().any(|a| a == "--demo");
         let now = Local::now().naive_local();
         let w = kv(&read("water.txt"));
@@ -493,6 +498,8 @@ impl App {
             alert: if shot.is_some() { demo_alert() } else if welcome { Some(welcome_hint(s.open_click)) } else { None }, shot, frames: 0,
             w: Spring { x: start.x, v: 0.0 }, h: Spring { x: start.y, v: 0.0 }, content: Spring { x: 0.0, v: 0.0 }, spring: SPRING, last_target: start,
             tasks: load_tasks(), form: None, todo_edit: false,
+            notes: if shot_notes { demo_notes() } else { load_notes() },
+            note_draft: String::new(), note_focus: false,
             water_day, drank, in_bottle, hours, fired, water_snooze: None, water_settings: false, reset_armed: None, settings_reset: None,
             // A screenshot can open a section: --settings 4.
             settings_tab: std::env::args().skip_while(|a| a != "--settings").nth(1).and_then(|n| n.parse().ok()).unwrap_or(0),

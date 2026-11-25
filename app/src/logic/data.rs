@@ -172,17 +172,28 @@ pub struct Settings {
 }
 
 /// Pages the notch has (main.rs PAGES).
-pub const PAGE_COUNT: usize = 8;
+pub const PAGE_COUNT: usize = 9;
+pub const NOTE_PAGE: usize = 8; // the newest page: its id comes last, its place is after To-do
+/// The usual order of the pages.
+pub const DEFAULT_ORDER: [usize; PAGE_COUNT] = [0, 1, 2, 3, 4, NOTE_PAGE, 5, 6, 7];
 
 fn ids(m: &BTreeMap<String, String>, k: &str) -> Vec<usize> {
     m.get(k).map(|v| v.split(',').filter_map(|x| x.trim().parse().ok()).collect()).unwrap_or_default()
 }
 
-/// The saved order when it lists each page exactly once, else the usual order.
+/// The saved order when it lists each page exactly once, else the usual order. An order saved
+/// before the Note page existed keeps its pages: the untouched usual order becomes today's usual
+/// order, a rearranged one gets Note at the end.
 fn page_order(saved: Vec<usize>) -> Vec<usize> {
     let mut sorted = saved.clone();
     sorted.sort_unstable();
-    if sorted == (0..PAGE_COUNT).collect::<Vec<_>>() { saved } else { (0..PAGE_COUNT).collect() }
+    if sorted == (0..PAGE_COUNT).collect::<Vec<_>>() {
+        saved
+    } else if sorted == (0..NOTE_PAGE).collect::<Vec<_>>() && saved != sorted {
+        saved.into_iter().chain([NOTE_PAGE]).collect()
+    } else {
+        DEFAULT_ORDER.to_vec()
+    }
 }
 
 fn join(ids: &[usize]) -> String {
@@ -473,8 +484,8 @@ mod tests {
     use super::*;
     #[test]
     fn page_order_keeps_only_a_full_ordering() {
-        assert_eq!(page_order(vec![7, 0, 1, 2, 3, 4, 5, 6]), vec![7, 0, 1, 2, 3, 4, 5, 6]);
-        let usual: Vec<usize> = (0..PAGE_COUNT).collect();
+        assert_eq!(page_order(vec![7, 0, 1, 2, 3, 4, 5, 6, 8]), vec![7, 0, 1, 2, 3, 4, 5, 6, 8]);
+        let usual: Vec<usize> = DEFAULT_ORDER.to_vec();
         assert_eq!(page_order(vec![0, 1, 1, 2, 3, 4, 5, 6]), usual); // a page twice, one missing
         assert_eq!(page_order(vec![0, 1, 2]), usual);
         assert_eq!(page_order(vec![]), usual);
@@ -518,7 +529,7 @@ mod tests {
             "clipboard_max=5", "fahrenheit=false", "focus=25", "focus_quiet=false", "hide_fullscreen=true",
             "hud_brightness=true", "hud_caps=true", "hud_language=true", "hud_volume=true", "language=1", "long_break=15",
             "lyrics=true", "mascot=true", "minimal=true", "notification_preview=false", "notifications=true",
-            "open_click=false", "page_order=0,1,2,3,4,5,6,7", "pages_hidden=", "popup_battery=true", "popup_bluetooth=true",
+            "open_click=false", "page_order=0,1,2,3,4,8,5,6,7", "pages_hidden=", "popup_battery=true", "popup_bluetooth=true",
             "popup_headset_off=true", "popup_song=true", "popup_wifi=true", "prayer=false", "prayer_adj_ashar=10",
             "prayer_adj_dzuhur=10", "prayer_adj_isya=10", "prayer_adj_maghrib=10", "prayer_adj_subuh=10", "prayer_asr=0",
             "prayer_city=17", "prayer_early=false", "prayer_lat=0", "prayer_lon=0", "prayer_method=0",
@@ -543,7 +554,7 @@ mod tests {
         s.prayer_lat = 10.78;
         s.widget_my_name = "Sinh\nnhật".into();
         s.widget_my_date = "02/09".into();
-        s.page_order = vec![7, 0, 1, 2, 3, 4, 5, 6];
+        s.page_order = vec![7, 0, 1, 2, 3, 4, NOTE_PAGE, 5, 6];
         s.pages_hidden = vec![1];
         let back = Settings::from_text(&s.to_text(), "");
         assert_eq!(back.widget_my_name, "Sinh nhật"); // kept on one line
@@ -563,6 +574,16 @@ mod tests {
         let s = Settings::from_text("size=9\nbattery_low=17\nlanguage=99\nprayer_asr=5\nwater_snooze=7\nclipboard_max=0", "");
         assert_eq!((s.size, s.battery_low, s.prayer_asr, s.water_snooze, s.clipboard_max), (3, 20, 0, 10, 1));
         assert!(s.language < crate::i18n::NAMES.len());
+    }
+
+    #[test]
+    fn old_page_orders_gain_note() {
+        // Saved before the Note page: the usual order turns into today's usual one (Note after To-do)...
+        assert_eq!(Settings::from_text("page_order=0,1,2,3,4,5,6,7", "").page_order, DEFAULT_ORDER.to_vec());
+        // ...a rearranged one keeps its order with Note at the end, and hidden pages stay hidden.
+        let s = Settings::from_text("page_order=7,0,1,2,3,4,5,6\npages_hidden=2", "");
+        assert_eq!((s.page_order, s.pages_hidden), (vec![7, 0, 1, 2, 3, 4, 5, 6, NOTE_PAGE], vec![2]));
+        assert_eq!(Settings::from_text("page_order=1,1", "").page_order, DEFAULT_ORDER.to_vec());
     }
 
     #[test]

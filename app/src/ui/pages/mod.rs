@@ -12,6 +12,7 @@ mod widgets;
 mod today;
 mod ask;
 mod settings;
+mod note;
 
 impl App {
     pub(crate) fn page_title(&self, i: usize) -> (&'static str, &'static str, Color32) {
@@ -23,6 +24,7 @@ impl App {
             4 => (t("Todo"), t("List"), GREEN),
             5 => (t("Prayer"), "", WHITE),
             TODAY_PAGE => (t("Today"), "", WHITE),
+            NOTE_PAGE => (t("Note"), "", WHITE),
             _ => (t("Widgets"), "", WHITE),
         }
     }
@@ -36,6 +38,7 @@ impl App {
             4 => self.page_todo(ui, r),
             5 => self.page_prayer(ui, r),
             TODAY_PAGE => self.page_today(ui, r),
+            NOTE_PAGE => self.page_note(ui, r),
             _ => self.page_widgets(ui, r),
         }
     }
