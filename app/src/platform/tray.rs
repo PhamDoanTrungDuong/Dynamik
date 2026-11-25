@@ -320,9 +320,9 @@ unsafe extern "system" fn keys(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
 /// The app icon choices from icon-options/ (build.rs gives the exe the first one).
 pub const ICON_NAMES: [&str; 3] = ["Violet", "Neon dark", "Classic light"];
 const ICON_PNGS: [&[u8]; 3] = [
-    include_bytes!("../../icon-options/icon-dog-c-violet.png"),
-    include_bytes!("../../icon-options/icon-dog-a-neon-dark.png"),
-    include_bytes!("../../icon-options/icon-dog-b-classic-light.png"),
+    include_bytes!("../../../icon-options/icon-dog-c-violet.png"),
+    include_bytes!("../../../icon-options/icon-dog-a-neon-dark.png"),
+    include_bytes!("../../../icon-options/icon-dog-b-classic-light.png"),
 ];
 static ICON_CHOICE: AtomicU8 = AtomicU8::new(0);
 

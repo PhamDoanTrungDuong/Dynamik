@@ -1,22 +1,39 @@
 #![windows_subsystem = "windows"]
 //! A notch at the top of the screen: Pomodoro, Water, Shelf, To-do, Prayer and Widgets pages,
 //! drawn to match the original's black notch with page dots and spring motion.
-mod calc;
-mod calendar;
+// Modules live in folders by role; #[path] keeps their names (crate::tray, crate::media...) as before.
+#[path = "logic/data.rs"]
 mod data;
-mod ocr;
-mod online;
-mod i18n;
-mod dragout;
-mod media;
+#[path = "logic/calc.rs"]
+mod calc;
+#[path = "logic/prayer.rs"]
 mod prayer;
+#[path = "logic/i18n.rs"]
+mod i18n;
+#[path = "net/online.rs"]
+mod online;
+#[path = "net/calendar.rs"]
+mod calendar;
+#[path = "platform/tray.rs"]
 mod tray;
-mod popup;
-mod pages;
-mod demo;
-mod controls;
-mod draw;
+#[path = "platform/system.rs"]
 mod system;
+#[path = "platform/media.rs"]
+mod media;
+#[path = "platform/dragout.rs"]
+mod dragout;
+#[path = "platform/ocr.rs"]
+mod ocr;
+#[path = "ui/draw.rs"]
+mod draw;
+#[path = "ui/controls.rs"]
+mod controls;
+#[path = "ui/popup.rs"]
+mod popup;
+#[path = "ui/demo.rs"]
+mod demo;
+#[path = "ui/pages.rs"]
+mod pages;
 
 use chrono::{Datelike, Duration, Local, NaiveDate, NaiveDateTime, Timelike, Utc, Weekday};
 use data::*;
