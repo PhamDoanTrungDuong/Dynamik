@@ -3,7 +3,7 @@ use super::*;
 
 /// What a click on a note asks for, done after the list is drawn.
 enum NoteAct {
-    Copy(String),
+    Copy(usize),
     Drag(String),
     Done(usize),
     Pin(usize),
@@ -61,7 +61,7 @@ impl App {
         }
         self.scroll_zone = Some((list, true));
         let notes = self.notes.clone();
-        let copied = self.copied.clone();
+        let copied = self.note_copied;
         let mut act = None;
         ui.allocate_new_ui(egui::UiBuilder::new().max_rect(list), |ui| {
             egui::ScrollArea::vertical().id_salt("notes").auto_shrink(false).show(ui, |ui| {
@@ -86,7 +86,7 @@ impl App {
                         p.circle_filled(pos2(x + 3.0, row.center().y), 3.0, ORANGE);
                         x += 12.0;
                     }
-                    let just = copied.as_ref().is_some_and(|(c, at)| *c == n.text && at.elapsed().as_secs() < 2);
+                    let just = copied.is_some_and(|(c, at)| c == i && at.elapsed().as_secs() < 2);
                     let col = if n.done.is_some() { DIM } else { WHITE };
                     let shown = if just { t("Copied").to_string() } else { n.text.replace(['\n', '\r'], " ") };
                     let g = fit_line(p, &shown, reg(13.0), col, row.right() - x - 6.0);
@@ -99,7 +99,7 @@ impl App {
                     if resp.drag_started() {
                         act = Some(NoteAct::Drag(n.text.clone()));
                     } else if resp.clicked() && !dot_resp.hovered() {
-                        act = Some(NoteAct::Copy(n.text.clone()));
+                        act = Some(NoteAct::Copy(i));
                     }
                     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &n.text));
                     let resp = resp.on_hover_text(t("Click to copy · drag out · right-click for more"));
@@ -121,12 +121,13 @@ impl App {
             });
         });
         match act {
-            Some(NoteAct::Copy(text)) => {
+            Some(NoteAct::Copy(i)) => {
+                let text = self.notes[i].text.clone();
                 if let Some(c) = self.clipboard.as_mut() {
                     let _ = c.set_text(text.clone());
                 }
-                self.last_clip = text.clone();
-                self.copied = Some((text, Instant::now()));
+                self.last_clip = text;
+                self.note_copied = Some((i, Instant::now()));
             }
             Some(NoteAct::Drag(text)) => dragout::text(&text),
             Some(NoteAct::Done(i)) => {
@@ -151,6 +152,7 @@ impl App {
     pub(crate) fn notes_changed(&mut self) {
         let today = self.today();
         tidy_notes(&mut self.notes, today);
+        self.note_copied = None; // places move when the list is sorted again
         if self.shot.is_none() {
             save_notes(&self.notes);
         }

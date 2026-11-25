@@ -313,6 +313,7 @@ struct App {
     notes: Vec<Note>,
     note_draft: String, // the Note page's input line
     note_focus: bool,   // put the cursor in the note box on the next frame (Ctrl+Alt+N)
+    note_copied: Option<(usize, Instant)>, // which note was just copied (by place: texts can repeat)
     form: Option<(Option<usize>, String, String, u16)>, // (editing index, title, "HH:MM", minutes)
     todo_edit: bool,
     // water
@@ -500,7 +501,7 @@ impl App {
             tasks: load_tasks(), form: None, todo_edit: false,
             // Tidied at start too, so notes done over 3 days ago are gone before the first change.
             notes: if shot_notes { demo_notes() } else { let mut n = load_notes(); tidy_notes(&mut n, now.date()); n },
-            note_draft: String::new(), note_focus: false,
+            note_draft: String::new(), note_focus: false, note_copied: None,
             water_day, drank, in_bottle, hours, fired, water_snooze: None, water_settings: false, reset_armed: None, settings_reset: None,
             // A screenshot can open a section: --settings 4.
             settings_tab: std::env::args().skip_while(|a| a != "--settings").nth(1).and_then(|n| n.parse().ok()).unwrap_or(0),
