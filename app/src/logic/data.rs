@@ -386,6 +386,66 @@ fn task_from(l: &str) -> Option<Task> {
     })
 }
 
+pub const NOTE_MAX_CHARS: usize = 500;
+pub const NOTES_MAX: usize = 200;
+const NOTE_DONE_KEEP_DAYS: i64 = 3; // a finished note goes this many days after it was done
+
+/// A quick note on the Note page.
+#[derive(Clone, PartialEq, Debug)]
+pub struct Note {
+    pub created: i64, // unix seconds
+    pub text: String,
+    pub pinned: bool,
+    pub done: Option<NaiveDate>, // the day it was marked done
+}
+
+pub fn load_notes() -> Vec<Note> {
+    read("notes.txt").lines().filter_map(note_from).collect()
+}
+
+pub fn save_notes(n: &[Note]) {
+    write("notes.txt", &n.iter().map(note_line).collect::<Vec<_>>().join("\n"));
+}
+
+/// One note: "created|flags|text", flags "p" (pinned) and "d2026-11-25" (done that day), comma-separated.
+fn note_line(n: &Note) -> String {
+    let mut flags = vec![];
+    if n.pinned {
+        flags.push("p".to_string());
+    }
+    if let Some(d) = n.done {
+        flags.push(format!("d{d}"));
+    }
+    format!("{}|{}|{}", n.created, flags.join(","), esc(&n.text))
+}
+
+fn note_from(l: &str) -> Option<Note> {
+    let mut p = l.splitn(3, '|');
+    let created = p.next()?.parse().ok()?;
+    let flags = p.next()?;
+    let text = unesc(p.next()?);
+    let done = flags.split(',').find_map(|f| NaiveDate::parse_from_str(f.strip_prefix('d')?, "%Y-%m-%d").ok());
+    Some(Note { created, text, pinned: flags.split(',').any(|f| f == "p"), done })
+}
+
+/// Cuts long notes, drops ones done over NOTE_DONE_KEEP_DAYS ago, keeps at most NOTES_MAX (the
+/// oldest done ones go first, then the oldest open ones), and sorts: pinned, open, done; newest first.
+pub fn tidy_notes(n: &mut Vec<Note>, today: NaiveDate) {
+    for note in n.iter_mut() {
+        if note.text.chars().count() > NOTE_MAX_CHARS {
+            note.text = note.text.chars().take(NOTE_MAX_CHARS).collect();
+        }
+    }
+    n.retain(|note| note.done.is_none_or(|d| (today - d).num_days() <= NOTE_DONE_KEEP_DAYS));
+    let rank = |note: &Note| if note.done.is_some() { 2 } else if note.pinned { 0 } else { 1 };
+    n.sort_by(|a, b| rank(a).cmp(&rank(b)).then(b.created.cmp(&a.created)));
+    while n.len() > NOTES_MAX {
+        // The last one is the oldest done note while any are left, else the oldest open one.
+        let last = n.iter().rposition(|note| !note.pinned || note.done.is_some()).unwrap_or(n.len() - 1);
+        n.remove(last);
+    }
+}
+
 /// Clipboard entries are stored one per line with backslashes and newlines escaped.
 pub fn esc(s: &str) -> String {
     s.replace('\\', "\\\\").replace('\n', "\\n").replace('\r', "")
@@ -503,6 +563,42 @@ mod tests {
         let s = Settings::from_text("size=9\nbattery_low=17\nlanguage=99\nprayer_asr=5\nwater_snooze=7\nclipboard_max=0", "");
         assert_eq!((s.size, s.battery_low, s.prayer_asr, s.water_snooze, s.clipboard_max), (3, 20, 0, 10, 1));
         assert!(s.language < crate::i18n::NAMES.len());
+    }
+
+    #[test]
+    fn note_lines_round_trip() {
+        let day = NaiveDate::from_ymd_opt(2026, 11, 25).unwrap();
+        let n = Note { created: 1_764_000_000, text: "Gọi anh Tám | hợp đồng\nlink C:\\docs".into(), pinned: true, done: Some(day) };
+        let line = note_line(&n);
+        assert!(!line.contains('\n'), "{line:?}");
+        let back = note_from(&line).unwrap();
+        assert_eq!((back.created, back.text.as_str(), back.pinned, back.done), (n.created, n.text.as_str(), true, Some(day)));
+        let plain = note_from(&note_line(&Note { created: 5, text: "a".into(), pinned: false, done: None })).unwrap();
+        assert_eq!((plain.pinned, plain.done), (false, None));
+        assert!(note_from("not a note").is_none());
+        assert!(note_from("x|p|text").is_none()); // no time
+    }
+
+    #[test]
+    fn notes_tidy() {
+        let today = NaiveDate::from_ymd_opt(2026, 11, 25).unwrap();
+        let ago = |d: i64| today - chrono::Duration::days(d);
+        let note = |created: i64, pinned: bool, done: Option<NaiveDate>| Note { created, text: format!("n{created}"), pinned, done };
+        let mut n = vec![note(1, false, None), note(2, true, None), note(3, false, Some(ago(1))), note(4, false, Some(ago(4))), note(5, false, None)];
+        tidy_notes(&mut n, today);
+        // Pinned first, then open newest first, then done; done over 3 days ago is gone.
+        assert_eq!(n.iter().map(|n| n.created).collect::<Vec<_>>(), vec![2, 5, 1, 3]);
+        let mut long = vec![Note { created: 1, text: "x".repeat(600), pinned: false, done: None }];
+        tidy_notes(&mut long, today);
+        assert_eq!(long[0].text.chars().count(), NOTE_MAX_CHARS);
+        // Too many: the oldest done ones go first, then the oldest open ones.
+        let mut many: Vec<Note> = (0..NOTES_MAX as i64).map(|i| note(100 + i, false, None)).collect();
+        many.push(note(1, false, Some(today)));
+        many.push(note(10_000, false, None));
+        tidy_notes(&mut many, today);
+        assert_eq!(many.len(), NOTES_MAX);
+        assert!(many.iter().all(|n| n.created != 1), "the done one goes first");
+        assert!(many.iter().any(|n| n.created == 10_000) && many.iter().all(|n| n.created != 100), "then the oldest open one");
     }
 
     #[test]
