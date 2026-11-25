@@ -40,13 +40,16 @@ pub fn set_checks(startup: bool, mascot: bool, minimal: bool) {
 }
 pub const ASK: u8 = 4; // Ctrl + Alt + Space, as the original's Ask Nusa
 pub const OCR: u8 = 5; // Ctrl + Alt + T, as the original's Smart OCR
+pub const NOTE: u8 = 10; // Ctrl + Alt + N, the Note page (not in the original)
 const HOTKEY_ASK: i32 = 1;
 const HOTKEY_OCR: i32 = 2;
+const HOTKEY_NOTE: i32 = 3;
 const WM_TRAY: u32 = WM_APP + 1;
 static PENDING: AtomicU8 = AtomicU8::new(0);
 // Which shortcuts another app already owns: TAKEN_ASK | TAKEN_OCR, or NOT_YET before registering.
 pub const TAKEN_ASK: u8 = 1;
 pub const TAKEN_OCR: u8 = 2;
+pub const TAKEN_NOTE: u8 = 4;
 const NOT_YET: u8 = u8::MAX;
 static TAKEN: AtomicU8 = AtomicU8::new(NOT_YET);
 
@@ -197,7 +200,8 @@ pub fn start(ctx: &egui::Context) {
         // Fails when another app already owns the keys; the notch says so (and still opens by hover).
         let ask = RegisterHotKey(hwnd, HOTKEY_ASK, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_SPACE as u32) != 0;
         let ocr = RegisterHotKey(hwnd, HOTKEY_OCR, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, u32::from(b'T')) != 0;
-        TAKEN.store(if ask { 0 } else { TAKEN_ASK } | if ocr { 0 } else { TAKEN_OCR }, Ordering::Relaxed);
+        let note = RegisterHotKey(hwnd, HOTKEY_NOTE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, u32::from(b'N')) != 0;
+        TAKEN.store(if ask { 0 } else { TAKEN_ASK } | if ocr { 0 } else { TAKEN_OCR } | if note { 0 } else { TAKEN_NOTE }, Ordering::Relaxed);
         wake();
         let flags = WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS;
         SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, null_mut(), Some(win_event), 0, 0, flags);
@@ -233,7 +237,7 @@ unsafe extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> L
         return 1;
     }
     if msg == WM_HOTKEY {
-        PENDING.store(if w as i32 == HOTKEY_OCR { OCR } else { ASK }, Ordering::Relaxed);
+        PENDING.store(match w as i32 { HOTKEY_OCR => OCR, HOTKEY_NOTE => NOTE, _ => ASK }, Ordering::Relaxed);
         wake();
         return 0;
     }

@@ -1242,6 +1242,20 @@ impl eframe::App for App {
             // The hotkey lets this app take the keyboard, so typing goes straight into the box.
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
         }
+        if pick == tray::NOTE {
+            self.expanded = true;
+            self.held = true;
+            self.settings_open = false;
+            self.ask_open = false;
+            // Asking for the page by its shortcut brings it back if it was hidden.
+            if self.s.pages_hidden.contains(&NOTE_PAGE) {
+                self.s.pages_hidden.retain(|&p| p != NOTE_PAGE);
+                self.s.save();
+            }
+            self.page = NOTE_PAGE;
+            self.note_focus = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        }
         // Turning the Today page off while on it moves back to the last page left.
         // A page turned off or hidden while on it hands over to the first one shown.
         let order = self.order();
@@ -1742,7 +1756,7 @@ fn welcome_hint(open_click: bool) -> Alert {
 
 /// Says which shortcuts another app already owns (`bits` from tray::hotkeys_taken).
 fn taken_hint(bits: u8) -> Alert {
-    let keys: Vec<&str> = [(tray::TAKEN_ASK, "Ctrl+Alt+Space"), (tray::TAKEN_OCR, "Ctrl+Alt+T")]
+    let keys: Vec<&str> = [(tray::TAKEN_ASK, "Ctrl+Alt+Space"), (tray::TAKEN_OCR, "Ctrl+Alt+T"), (tray::TAKEN_NOTE, "Ctrl+Alt+N")]
         .iter()
         .filter(|(b, _)| bits & b != 0)
         .map(|&(_, k)| k)

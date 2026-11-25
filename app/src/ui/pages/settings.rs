@@ -123,7 +123,7 @@ impl App {
                             pick(ui, "Open the notch on", &mut s.open_click, &[false, true], &["Hover", "Click"]);
                             // The shortcuts, and whether another app has taken one.
                             let taken = tray::hotkeys_taken();
-                            row(ui, "Shortcuts — Ctrl+Alt+Space asks Nusa, Ctrl+Alt+T copies text from the screen", |ui| {
+                            row(ui, "Shortcuts — Ctrl+Alt+Space ask · Ctrl+Alt+T copy text · Ctrl+Alt+N note", |ui| {
                                 let (text, col) = match taken {
                                     None => (String::new(), DIM), // not registered yet
                                     Some(0) => (t("Ready").to_string(), GREEN),

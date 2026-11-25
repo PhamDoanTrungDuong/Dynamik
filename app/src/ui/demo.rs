@@ -87,7 +87,7 @@ pub(crate) fn demo_alert() -> Option<Alert> {
         "welcome" => return Some(welcome_hint(false)),
         // With --demo, the made-up song's cover (demo_music) shows too.
         "song" => ("Nơi này có anh (Lofi Version) — bản phối dài cho buổi chiều", "Sơn Tùng M-TP", Kind::Song),
-        "taken" => return Some(taken_hint(tray::TAKEN_ASK | tray::TAKEN_OCR)),
+        "taken" => return Some(taken_hint(tray::TAKEN_ASK | tray::TAKEN_OCR | tray::TAKEN_NOTE)),
         _ => return None,
     };
     Some(Alert { title: title.into(), body: body.into(), kind, at: Instant::now() })

@@ -395,7 +395,7 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("Click to open · right-click for Settings", "Click để mở · click phải để cài đặt", "点击打开 · 右键进入设置", "Cliquez pour ouvrir · clic droit : réglages"),
     ("Shortcut used by another app", "Phím tắt đang bị app khác dùng", "快捷键已被其他应用占用", "Raccourci pris par une autre app"),
     ("Taken: {}", "Bị chiếm: {}", "被占用：{}", "Pris : {}"),
-    ("Shortcuts — Ctrl+Alt+Space asks Nusa, Ctrl+Alt+T copies text from the screen", "Phím tắt — Ctrl+Alt+Space để hỏi Nusa, Ctrl+Alt+T để lấy chữ trên màn hình", "快捷键 — Ctrl+Alt+Space 问 Nusa，Ctrl+Alt+T 复制屏幕上的文字", "Raccourcis — Ctrl+Alt+Espace pour demander à Nusa, Ctrl+Alt+T pour copier le texte de l'écran"),
+    ("Shortcuts — Ctrl+Alt+Space ask · Ctrl+Alt+T copy text · Ctrl+Alt+N note", "Phím tắt — Ctrl+Alt+Space hỏi · Ctrl+Alt+T lấy chữ · Ctrl+Alt+N ghi chú", "快捷键 — Ctrl+Alt+Space 提问 · Ctrl+Alt+T 取字 · Ctrl+Alt+N 便签", "Raccourcis — Ctrl+Alt+Espace question · Ctrl+Alt+T texte · Ctrl+Alt+N note"),
     ("Ready", "Sẵn sàng", "可用", "Prêts"),
     ("Thinking…", "Đang nghĩ…", "思考中…", "Réflexion…"),
     ("Gemini turned the key down — check it in Settings", "Gemini từ chối khóa — kiểm tra lại trong Cài đặt", "Gemini 拒绝了密钥 — 请在设置中检查", "Gemini a refusé la clé — vérifiez-la dans Réglages"),
