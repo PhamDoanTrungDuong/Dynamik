@@ -179,8 +179,8 @@ Sắp xếp lại hoặc ẩn từng trang trong **Settings › Pages**.
 
 <img src="app/shots/widgets.png" width="560" alt="Widget Thời tiết và Giờ thế giới">
 
-Hai widget một lúc, chọn trong 9 loại ở Settings › Widgets: **This week, Battery, Next prayer, Focus
-today, World clock, Moon, Countdown, Water, Weather**. Click widget Tuần, Giờ cầu nguyện, Tập trung, Nước
+Hai widget một lúc, chọn trong 10 loại ở Settings › Widgets: **This week, Battery, Next prayer, Focus
+today, World clock, Moon, Countdown, Water, Weather, Devices**. Click widget Tuần, Giờ cầu nguyện, Tập trung, Nước
 để mở trang tương ứng.
 
 <details>
@@ -193,6 +193,8 @@ today, World clock, Moon, Countdown, Water, Weather**. Click widget Tuần, Gi�
   DD/MM/YYYY).
 - **Weather** (MET Norway, đọc lại 30 phút một lần): nhiệt độ, trời, cao/thấp hôm nay, mưa 6 giờ tới,
   °C hoặc °F.
+- **Devices:** tối đa 3 thiết bị Bluetooth đang kết nối (tai nghe, chuột, bàn phím, tay cầm) và
+  tay cầm Xbox, kèm % pin; pin yếu thì hiện màu đỏ.
 - **Week starts on:** Chủ nhật hoặc Thứ hai.
 
 </details>
@@ -217,9 +219,9 @@ Bật/tắt từng loại ở **Settings › Popups**.
 |---|---|
 | 🔊 Âm lượng · ☀️ Độ sáng | Khi đổi mức |
 | ⇪ Caps Lock · ⌨️ Ngôn ngữ bàn phím | Khi bật/tắt, khi đổi bàn phím |
-| 🔋 Pin | Cắm / rút sạc, pin yếu (15 / 20 / 30%, chọn được), pin rất yếu (dưới 11%), sạc đầy |
+| 🔋 Pin | Cắm / rút sạc, pin yếu (15 / 20 / 30%, chọn được), pin rất yếu (dưới 11%), sạc đầy; khi dùng pin, pop-up và widget Pin hiện thời gian còn lại |
 | 📶 Wi-Fi | Có mạng, mất mạng, có mạng nhưng không có internet |
-| 🎧 Tai nghe Bluetooth | Kết nối (kèm % pin), ngắt kết nối, pin tai nghe yếu |
+| 🎧 Thiết bị Bluetooth · 🎮 Tay cầm Xbox | Tai nghe, chuột, bàn phím, tay cầm: kết nối (kèm % pin), ngắt kết nối, pin yếu |
 | 🎵 Đang phát | Đổi bài lúc notch thu nhỏ |
 | 🔔 Thông báo Windows | Logo app, người gửi và nội dung (nếu bật preview), gom tin "+N"; click để mở đúng app |
 
@@ -264,11 +266,12 @@ Click phải vào notch để mở, **Esc** hoặc **Close** để đóng. Đổ
 | Show date and time | Tắt đồng hồ trên notch và đầu trang (Pomodoro đang chạy vẫn hiện) |
 | Tray icon | Violet · Neon dark · Classic light |
 | Minimal notch · Mascot | Bật/tắt (cũng có trong menu khay) |
+| Reduce motion | Không trượt, không nảy (lần đầu theo cài đặt Animation effects của Windows) |
 | Open the notch on | Rê chuột · Click |
 | Status ring | Water · Tasks done today · No ring |
 | Reminder sounds | Chuông cho Pomodoro, To-do, Water |
 | Pages | ↑ ↓ đổi thứ tự, công tắc để ẩn (luôn giữ ít nhất 1 trang) |
-| Dữ liệu | **Mở** thư mục dữ liệu · **Khôi phục** cài đặt mặc định (bấm 2 lần; nước, việc, lịch sử, khóa và lịch vẫn giữ) |
+| Dữ liệu | **Mở** thư mục dữ liệu · **Khôi phục** cài đặt mặc định (bấm 2 lần; nước, việc, lịch sử, khóa và lịch vẫn giữ) · **Kiểm tra** bản mới trên GitHub (hoặc mỗi ngày, mặc định tắt) |
 
 Dữ liệu nằm ở `%LOCALAPPDATA%\MyNotch`: `settings.txt`, `water.txt`, `water_log.txt`, `tasks.txt`,
 `focus.txt`, `shelf.txt`, `notes.txt`, `clipboard.txt` (chỉ khi bật "Remember after restart"). Khóa Gemini và địa
@@ -293,6 +296,9 @@ tốn tài nguyên máy.
    `%LOCALAPPDATA%\Programs\MyNotch` và có lối tắt "My Notch" trong Start Menu.
 3. Nếu Windows hiện *"Windows protected your PC"*: bấm **More info → Run anyway** (app chưa có chữ ký số).
 
+> **Kiểm tra file tải về:** mỗi bản phát hành có `SHA256SUMS.txt`; so với kết quả của
+> `(Get-FileHash MyNotch-<version>-windows-x64.zip).Hash` trong PowerShell.
+>
 > **Cập nhật:** thoát notch đang chạy (icon khay › Exit) rồi chạy `install.cmd` của bản mới.
 >
 > **Gỡ cài đặt:** chạy `%LOCALAPPDATA%\Programs\MyNotch\uninstall.cmd`. Cài đặt riêng của bạn nằm ở
@@ -309,6 +315,7 @@ App chạy hoàn toàn trên máy, trừ các tính năng dưới đây; mỗi c
 | Đổi tiền | [open.er-api.com](https://open.er-api.com) | Không gì ngoài yêu cầu tỉ giá |
 | Hỏi Nusa / Dịch | Google Gemini | Câu hỏi hoặc chữ cần dịch, kèm khóa của bạn |
 | Google Lịch | Google | Đọc lịch qua địa chỉ iCal bí mật của bạn |
+| Cập nhật | GitHub | Hỏi bản phát hành mới nhất, chỉ khi bạn kiểm tra (hoặc mỗi ngày nếu bật) |
 
 - 🔐 Khóa Gemini và địa chỉ lịch được **mã hóa bằng Windows** (DPAPI), chỉ tài khoản Windows này trên máy
   này đọc được.

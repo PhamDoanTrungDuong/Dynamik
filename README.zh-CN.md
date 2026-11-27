@@ -151,7 +151,7 @@
 
 <img src="app/shots/widgets.png" width="560" alt="天气和世界时钟小组件">
 
-同时显示两个小组件，在 Settings › Widgets 中从 9 种里选择：**This week、Battery、Next prayer、Focus today、World clock、Moon、Countdown、Water、Weather**。点击本周、礼拜、专注或喝水小组件可打开对应页面。
+同时显示两个小组件，在 Settings › Widgets 中从 10 种里选择：**This week、Battery、Next prayer、Focus today、World clock、Moon、Countdown、Water、Weather、Devices**。点击本周、礼拜、专注或喝水小组件可打开对应页面。
 
 <details>
 <summary><b>各小组件详情</b></summary>
@@ -159,6 +159,7 @@
 - **World clock：** 从 27 个城市中选 2 个（含河内、胡志明市、曼谷…），并显示与本机的时差。
 - **Countdown：** 新年、斋月、开斋节、宰牲节、印度尼西亚独立日、圣诞节、**春节 (Tết)**、**越南国庆节**，或 **你自己的日子**（自定名称，每年 DD/MM 或 DD/MM/YYYY）。
 - **Weather**（MET Norway，每 30 分钟重新读取）：温度、天空状况、今天最高/最低温、未来 6 小时降雨，°C 或 °F。
+- **Devices：** 最多 3 个已连接的蓝牙设备（耳机、鼠标、键盘、手柄）和 Xbox 手柄及其电量；电量低时显示红色。
 - **Week starts on：** 周日或周一。
 
 </details>
@@ -181,9 +182,9 @@
 |---|---|
 | 🔊 音量 · ☀️ 亮度 | 调整时 |
 | ⇪ Caps Lock · ⌨️ 键盘语言 | 开/关时、切换键盘时 |
-| 🔋 电池 | 插上 / 拔下充电器、电量低（15 / 20 / 30%，可选）、电量极低（低于 11%）、充满 |
+| 🔋 电池 | 插上 / 拔下充电器、电量低（15 / 20 / 30%，可选）、电量极低（低于 11%）、充满；使用电池时，弹窗和电池小组件显示剩余时间 |
 | 📶 Wi-Fi | 已连接、已断开、已连接但无法上网 |
-| 🎧 蓝牙耳机 | 已连接（附电量 %）、已断开、耳机电量低 |
+| 🎧 蓝牙设备 · 🎮 Xbox 手柄 | 耳机、鼠标、键盘、手柄：已连接（附电量 %）、已断开、电量低 |
 | 🎵 正在播放 | 刘海缩小时换歌 |
 | 🔔 Windows 通知 | 应用图标、发送者和内容（如已开启预览），合并为 "+N"；点击打开对应应用 |
 
@@ -223,11 +224,12 @@
 | Show date and time | 隐藏刘海上和页面顶部的时钟（运行中的番茄钟仍显示） |
 | Tray icon | Violet · Neon dark · Classic light |
 | Minimal notch · Mascot | 开/关（托盘菜单中也有） |
+| Reduce motion | 不滑动、不弹跳（首次跟随 Windows 的“动画效果”） |
 | Open the notch on | 悬停 · 点击 |
 | Status ring | Water · 今天完成的任务 · 不显示 |
 | Reminder sounds | 番茄钟、To-do、喝水的提示音 |
 | Pages | ↑ ↓ 调整顺序，开关隐藏（始终至少保留 1 页） |
-| 数据 | **打开** 数据文件夹 · **恢复** 默认设置（点两次；饮水、任务、历史、密钥和日历会保留） |
+| 数据 | **打开** 数据文件夹 · **恢复** 默认设置（点两次；饮水、任务、历史、密钥和日历会保留）· 在 GitHub 上 **检查** 新版本（或每天一次，默认关闭） |
 
 数据位于 `%LOCALAPPDATA%\MyNotch`：`settings.txt`、`water.txt`、`water_log.txt`、`tasks.txt`、`focus.txt`、`shelf.txt`、`notes.txt`、`clipboard.txt`（仅在开启 "Remember after restart" 时）。Gemini 密钥和日历地址单独保存在 `gemini.key` 和 `calendar.key` 中，使用 Windows DPAPI 加密。
 
@@ -248,6 +250,9 @@
 2. 解压后双击 **`install.cmd`**（无需管理员权限）。应用会被复制到 `%LOCALAPPDATA%\Programs\MyNotch`，并在开始菜单中添加 "My Notch" 快捷方式。
 3. 如果 Windows 显示 *"Windows protected your PC"*：点击 **More info → Run anyway**（应用尚未进行代码签名）。
 
+> **校验下载：** 每个版本都附带 `SHA256SUMS.txt`；在 PowerShell 中与
+> `(Get-FileHash MyNotch-<version>-windows-x64.zip).Hash` 的结果比对。
+>
 > **更新：** 退出正在运行的刘海（托盘图标 › Exit），然后运行新版本的 `install.cmd`。
 >
 > **卸载：** 运行 `%LOCALAPPDATA%\Programs\MyNotch\uninstall.cmd`。你的设置在 `%LOCALAPPDATA%\MyNotch`，删除该文件夹即可彻底清除。
@@ -263,6 +268,7 @@
 | 货币换算 | [open.er-api.com](https://open.er-api.com) | 仅汇率请求本身 |
 | 问 Nusa / 翻译 | Google Gemini | 问题或要翻译的文字，以及你的密钥 |
 | Google 日历 | Google | 通过你的私密 iCal 地址读取日历 |
+| 更新 | GitHub | 只在你检查时（或开启后每天一次）询问最新版本 |
 
 - 🔐 Gemini 密钥和日历地址 **由 Windows 加密**（DPAPI），只有本机上的这个 Windows 账户能读取。
 - 📋 剪贴板从不保存密码；Today 页面的通知只保存在内存中。

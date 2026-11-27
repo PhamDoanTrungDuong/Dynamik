@@ -180,8 +180,8 @@ Reorder or hide pages in **Settings › Pages**.
 
 <img src="app/shots/widgets.png" width="560" alt="Weather and World clock widgets">
 
-Two widgets at a time, chosen from 9 in Settings › Widgets: **This week, Battery, Next prayer, Focus
-today, World clock, Moon, Countdown, Water, Weather**. Click the This week, Next prayer, Focus or Water
+Two widgets at a time, chosen from 10 in Settings › Widgets: **This week, Battery, Next prayer, Focus
+today, World clock, Moon, Countdown, Water, Weather, Devices**. Click the This week, Next prayer, Focus or Water
 widget to open its page.
 
 <details>
@@ -194,6 +194,8 @@ widget to open its page.
   year or DD/MM/YYYY).
 - **Weather** (MET Norway, read again every 30 minutes): temperature, sky, today's high/low, rain in the
   next 6 hours, °C or °F.
+- **Devices:** up to three connected Bluetooth devices (headsets, mice, keyboards, controllers)
+  and Xbox controllers, with their battery; red when low.
 - **Week starts on:** Sunday or Monday.
 
 </details>
@@ -218,9 +220,9 @@ Turn each kind on or off in **Settings › Popups**.
 |---|---|
 | 🔊 Volume · ☀️ Brightness | When the level changes |
 | ⇪ Caps Lock · ⌨️ Keyboard language | When turned on/off, when the keyboard changes |
-| 🔋 Battery | Charger plugged in / out, low battery (15 / 20 / 30%, your choice), very low (under 11%), fully charged |
+| 🔋 Battery | Charger plugged in / out, low battery (15 / 20 / 30%, your choice), very low (under 11%), fully charged; on battery, the pop-up and the Battery widget show the time left |
 | 📶 Wi-Fi | Connected, disconnected, connected without internet |
-| 🎧 Bluetooth headset | Connected (with battery %), disconnected, headset battery low |
+| 🎧 Bluetooth devices · 🎮 Xbox controllers | Headsets, mice, keyboards, controllers: connected (with battery %), disconnected, battery low |
 | 🎵 Now playing | Song changes while the notch is shrunk |
 | 🔔 Windows notifications | App logo, sender and text (if previews are on), "+N" for more; click to open the right app |
 
@@ -266,11 +268,12 @@ a restart.
 | Show date and time | Hides the clock on the notch and at the top of pages (a running Pomodoro still shows) |
 | Tray icon | Violet · Neon dark · Classic light |
 | Minimal notch · Mascot | On/off (also in the tray menu) |
+| Reduce motion | No sliding, springing or popping (the first time, follows Windows' Animation effects) |
 | Open the notch on | Hover · Click |
 | Status ring | Water · Tasks done today · No ring |
 | Reminder sounds | Chime for Pomodoro, To-do, Water |
 | Pages | ↑ ↓ to reorder, switch to hide (at least 1 page always stays) |
-| Data | **Open** the data folder · **Restore** default settings (tap twice; water, tasks, history, keys and calendar are kept) |
+| Data | **Open** the data folder · **Restore** default settings (tap twice; water, tasks, history, keys and calendar are kept) · **Check** for a new version on GitHub (or once a day, off by default) |
 
 Data lives in `%LOCALAPPDATA%\MyNotch`: `settings.txt`, `water.txt`, `water_log.txt`, `tasks.txt`,
 `focus.txt`, `shelf.txt`, `notes.txt`, `clipboard.txt` (only with "Remember after restart" on). The Gemini key and the
@@ -297,6 +300,9 @@ cover art and app logos.</sub>
 3. If Windows shows *"Windows protected your PC"*: click **More info → Run anyway** (the app is not
    code-signed yet).
 
+> **Verify a download:** each release has a `SHA256SUMS.txt`; compare it with
+> `(Get-FileHash MyNotch-<version>-windows-x64.zip).Hash` in PowerShell.
+>
 > **Update:** quit the running notch (tray icon › Exit), then run the new version's `install.cmd`.
 >
 > **Uninstall:** run `%LOCALAPPDATA%\Programs\MyNotch\uninstall.cmd`. Your settings live in
@@ -313,6 +319,7 @@ The app runs entirely on your PC except for the features below; each one only co
 | Currency | [open.er-api.com](https://open.er-api.com) | Nothing but the rates request |
 | Ask Nusa / Translate | Google Gemini | The question or text to translate, with your key |
 | Google Calendar | Google | Reads your calendar through your secret iCal address |
+| Updates | GitHub | Asks for the latest release, only when you check (or once a day if turned on) |
 
 - 🔐 The Gemini key and the calendar address are **encrypted by Windows** (DPAPI); only this Windows
   account on this PC can read them.

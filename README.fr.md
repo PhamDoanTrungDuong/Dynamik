@@ -186,8 +186,8 @@ Réordonnez ou masquez les pages dans **Settings › Pages**.
 
 <img src="app/shots/widgets.png" width="560" alt="Widgets Météo et Horloge mondiale">
 
-Deux widgets à la fois, à choisir parmi 9 dans Settings › Widgets : **This week, Battery, Next prayer,
-Focus today, World clock, Moon, Countdown, Water, Weather**. Cliquez sur les widgets Semaine, Prière,
+Deux widgets à la fois, à choisir parmi 10 dans Settings › Widgets : **This week, Battery, Next prayer,
+Focus today, World clock, Moon, Countdown, Water, Weather, Devices**. Cliquez sur les widgets Semaine, Prière,
 Concentration ou Eau pour ouvrir la page correspondante.
 
 <details>
@@ -200,6 +200,8 @@ Concentration ou Eau pour ouvrir la page correspondante.
   choix, JJ/MM chaque année ou JJ/MM/AAAA).
 - **Weather** (MET Norway, relu toutes les 30 minutes) : température, ciel, max/min du jour, pluie dans
   les 6 prochaines heures, °C ou °F.
+- **Devices :** jusqu'à trois appareils Bluetooth connectés (casques, souris, claviers, manettes)
+  et les manettes Xbox, avec leur batterie ; en rouge quand elle est faible.
 - **Week starts on :** dimanche ou lundi.
 
 </details>
@@ -225,9 +227,9 @@ Activez ou désactivez chaque type dans **Settings › Popups**.
 |---|---|
 | 🔊 Volume · ☀️ Luminosité | Au changement de niveau |
 | ⇪ Verr. Maj · ⌨️ Langue du clavier | À l'activation/désactivation, au changement de clavier |
-| 🔋 Batterie | Chargeur branché / débranché, batterie faible (15 / 20 / 30 %, au choix), très faible (moins de 11 %), chargée |
+| 🔋 Batterie | Chargeur branché / débranché, batterie faible (15 / 20 / 30 %, au choix), très faible (moins de 11 %), chargée ; sur batterie, le pop-up et le widget Battery affichent le temps restant |
 | 📶 Wi-Fi | Connecté, déconnecté, connecté sans internet |
-| 🎧 Casque Bluetooth | Connecté (avec le % de batterie), déconnecté, batterie du casque faible |
+| 🎧 Appareils Bluetooth · 🎮 Manettes Xbox | Casques, souris, claviers, manettes : connecté (avec le % de batterie), déconnecté, batterie faible |
 | 🎵 Lecture en cours | Changement de morceau pendant que l'encoche est réduite |
 | 🔔 Notifications Windows | Logo de l'application, expéditeur et texte (si l'aperçu est activé), regroupées en « +N » ; cliquez pour ouvrir la bonne application |
 
@@ -273,11 +275,12 @@ aussitôt et conservé après un redémarrage.
 | Show date and time | Masque l'horloge sur l'encoche et en haut des pages (un Pomodoro en cours reste affiché) |
 | Tray icon | Violet · Neon dark · Classic light |
 | Minimal notch · Mascot | Activé/désactivé (aussi dans le menu de la zone de notification) |
+| Reduce motion | Sans glissement ni rebond (la première fois, suit les effets d'animation de Windows) |
 | Open the notch on | Survol · Clic |
 | Status ring | Water · Tâches faites aujourd'hui · Aucun anneau |
 | Reminder sounds | Carillon pour Pomodoro, To-do, Water |
 | Pages | ↑ ↓ pour réordonner, interrupteur pour masquer (au moins 1 page reste toujours) |
-| Données | **Ouvrir** le dossier des données · **Restaurer** les paramètres par défaut (deux appuis ; eau, tâches, historique, clés et agenda sont conservés) |
+| Données | **Ouvrir** le dossier des données · **Restaurer** les paramètres par défaut (deux appuis ; eau, tâches, historique, clés et agenda sont conservés) · **Vérifier** les nouvelles versions sur GitHub (ou chaque jour, désactivé par défaut) |
 
 Les données sont dans `%LOCALAPPDATA%\MyNotch` : `settings.txt`, `water.txt`, `water_log.txt`,
 `tasks.txt`, `focus.txt`, `shelf.txt`, `notes.txt`, `clipboard.txt` (seulement avec « Remember after restart »). La clé
@@ -306,6 +309,9 @@ peu avec les pochettes et les logos d'applications.</sub>
 3. Si Windows affiche *« Windows a protégé votre ordinateur »* : cliquez sur **Informations
    complémentaires → Exécuter quand même** (l'application n'est pas encore signée).
 
+> **Vérifier un téléchargement :** chaque version a un `SHA256SUMS.txt` ; comparez-le avec
+> `(Get-FileHash MyNotch-<version>-windows-x64.zip).Hash` dans PowerShell.
+>
 > **Mise à jour :** quittez l'encoche en cours (icône › Exit), puis lancez le `install.cmd` de la
 > nouvelle version.
 >
@@ -324,6 +330,7 @@ connecte que lorsque vous l'utilisez.
 | Devises | [open.er-api.com](https://open.er-api.com) | Rien d'autre que la demande de taux |
 | Demander à Nusa / Traduire | Google Gemini | La question ou le texte à traduire, avec votre clé |
 | Google Agenda | Google | Lit votre agenda via votre adresse iCal secrète |
+| Mises à jour | GitHub | Demande la dernière version, seulement quand vous vérifiez (ou chaque jour si activé) |
 
 - 🔐 La clé Gemini et l'adresse de l'agenda sont **chiffrées par Windows** (DPAPI) ; seul ce compte
   Windows sur ce PC peut les lire.
