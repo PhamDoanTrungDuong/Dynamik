@@ -223,6 +223,50 @@ pub fn rates_state(rates: &SharedRates) -> RatesState {
     }
 }
 
+/// Where new versions are published.
+const RELEASES: &str = "https://api.github.com/repos/PhamDoanTrungDuong/Dynamik/releases/latest";
+
+/// What "Check for updates" found.
+#[derive(Clone, Default, PartialEq, Debug)]
+pub enum Update {
+    #[default]
+    Idle,
+    Checking,
+    Latest,
+    Newer(String, String), // version, its release page
+    Failed,
+}
+
+/// Asks GitHub for the latest release in the background; the notch is woken with the answer.
+pub fn check_update(state: &Arc<Mutex<Update>>) {
+    *state.lock().unwrap() = Update::Checking;
+    let state = state.clone();
+    std::thread::spawn(move || {
+        let found = get(RELEASES).as_deref().and_then(release_of);
+        *state.lock().unwrap() = match found {
+            Some((v, page)) if newer(env!("CARGO_PKG_VERSION"), &v) => Update::Newer(v, page),
+            Some(_) => Update::Latest,
+            None => Update::Failed,
+        };
+        crate::tray::wake();
+    });
+}
+
+/// The version ("v0.7.0" → "0.7.0") and page of GitHub's latest-release answer. The page must be
+/// on github.com, since it is opened in the browser.
+fn release_of(body: &str) -> Option<(String, String)> {
+    let tag = crate::media::json_string(body, "tag_name")?;
+    let page = crate::media::json_string(body, "html_url")?;
+    let v = tag.trim().trim_start_matches(['v', 'V']).to_string();
+    (page.starts_with("https://github.com/") && v.split('.').all(|p| p.parse::<u32>().is_ok())).then_some((v, page))
+}
+
+/// Whether `latest` is a newer "1.2.3" version than `current` (numbers compared part by part).
+fn newer(current: &str, latest: &str) -> bool {
+    let parts = |v: &str| v.split('.').map(|p| p.parse::<u32>().unwrap_or(0)).collect::<Vec<_>>();
+    parts(latest) > parts(current)
+}
+
 /// `"rates":{"USD":1,"VND":25400.5,...}` into a map.
 pub fn parse_rates(body: &str) -> HashMap<String, f64> {
     let Some(start) = body.find("\"rates\"") else { return HashMap::new() };
@@ -285,6 +329,27 @@ mod tests {
         assert_eq!(gemini_answer(503, "{}"), Err(AskError::Offline));
         assert_eq!(gemini_answer(200, r#"{"candidates":[{"finishReason":"SAFETY"}]}"#), Err(AskError::Empty));
         assert_eq!(gemini_answer(200, r#"{"candidates":[{"content":{"parts":[{"text":"Hi"}]}}]}"#), Ok("Hi".into()));
+    }
+
+    #[test]
+    fn reads_the_latest_release() {
+        let body = r#"{"url":"https://api.github.com/repos/x/y/releases/1","html_url":"https://github.com/PhamDoanTrungDuong/Dynamik/releases/tag/v0.7.0","tag_name":"v0.7.0","name":"My Notch 0.7.0"}"#;
+        assert_eq!(release_of(body), Some(("0.7.0".into(), "https://github.com/PhamDoanTrungDuong/Dynamik/releases/tag/v0.7.0".into())));
+        assert!(release_of(r#"{"tag_name":"v1.0.0","html_url":"https://evil.example/x"}"#).is_none(), "only github.com pages open");
+        assert!(release_of(r#"{"tag_name":"nightly","html_url":"https://github.com/a"}"#).is_none());
+        assert!(release_of(r#"{"message":"Not Found"}"#).is_none());
+        assert!(newer("0.6.0", "0.6.1") && newer("0.6.1", "0.10.0") && newer("0.9.9", "1.0"));
+        assert!(!newer("0.6.0", "0.6.0") && !newer("0.10.0", "0.9.0"));
+    }
+
+    /// GitHub's real answer for this repo: cargo test live -- --ignored
+    #[test]
+    #[ignore]
+    fn live_github_latest_release() {
+        let (v, page) = get(RELEASES).as_deref().and_then(release_of).expect("GitHub answered with a release");
+        // The owner can change (GitHub redirects a renamed account), the repo and page kind can't.
+        assert!(page.starts_with("https://github.com/") && page.contains("/Dynamik/releases/"), "{page}");
+        println!("latest release {v}, this build {}", env!("CARGO_PKG_VERSION"));
     }
 
     #[test]

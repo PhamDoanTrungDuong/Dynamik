@@ -85,6 +85,7 @@ impl App {
         let (gemini, ical, ical_url) = (&mut self.gemini_key, &mut self.ical_text, self.ical_url.clone());
         let cal = self.calendar.lock().unwrap().clone();
         let reset_at = &mut self.settings_reset;
+        let update = self.update.clone();
         settings_style(ui);
 
         // The sections, down the left.
@@ -309,6 +310,33 @@ impl App {
                                 let _ = std::process::Command::new("explorer.exe").arg(dir()).spawn();
                             }
                         });
+                        // New versions: asked of GitHub only when checking (by hand, or daily if on).
+                        let found = update.lock().unwrap().clone();
+                        row(ui, "Updates — new versions come out on GitHub", |ui| {
+                            match &found {
+                                online::Update::Newer(_, page) => {
+                                    if ui.add(egui::Button::new(t("Open")).corner_radius(12.0)).clicked() {
+                                        let _ = std::process::Command::new("explorer.exe").arg(page).spawn();
+                                    }
+                                }
+                                online::Update::Checking => {}
+                                _ => {
+                                    if ui.add(egui::Button::new(t("Check")).corner_radius(12.0)).clicked() {
+                                        online::check_update(&update);
+                                    }
+                                }
+                            }
+                            ui.add_space(8.0);
+                            let (text, col) = match &found {
+                                online::Update::Idle => (tr("This is version {}", &[&env!("CARGO_PKG_VERSION")]), DIM),
+                                online::Update::Checking => (t("Checking…").to_string(), DIM),
+                                online::Update::Latest => (t("You have the newest version").to_string(), GREEN),
+                                online::Update::Newer(v, _) => (tr("Version {} is out", &[v]), BLUE),
+                                online::Update::Failed => (t("Couldn't check, no internet?").to_string(), RED),
+                            };
+                            ui.label(egui::RichText::new(text).font(reg(12.0)).color(col));
+                        });
+                        switch_row(ui, "Check for updates once a day", &mut s.update_daily);
                         // Two clicks within RESET_CONFIRM_SECS, as the Water page's Reset.
                         let armed = reset_at.is_some_and(|at| at.elapsed().as_secs_f32() < RESET_CONFIRM_SECS);
                         row(ui, "Restore default settings — water, tasks, history, keys and the calendar stay", |ui| {

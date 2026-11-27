@@ -170,6 +170,7 @@ pub struct Settings {
     pub note_done_days: u32,      // finished notes go this many days later (0: never)
     pub note_time: bool,          // each note shows when it was written
     pub reduce_motion: bool,      // no sliding, springing or popping (first: as Windows' Animation effects)
+    pub update_daily: bool,       // ask GitHub for a newer version once a day (off: the app stays offline)
     pub page_order: Vec<usize>,   // every page id once, in the order they are paged through
     pub pages_hidden: Vec<usize>, // page ids left out
 }
@@ -316,6 +317,7 @@ simple_settings! {
     note_done_days = 3u32, |v| if NOTE_DONE_DAYS.contains(&v) { v } else { 3 };
     note_time = true;
     reduce_motion = !crate::system::windows_animates();
+    update_daily = false;
 }
 
 impl Settings {
@@ -537,7 +539,7 @@ mod tests {
     #[test]
     fn settings_text_is_unchanged() {
         // Every key and default exactly as settings.txt held them before the keys were listed once.
-        const GOLDEN: [&str; 70] = [
+        const GOLDEN: [&str; 71] = [
             "app_icon=0", "auto_next=false", "battery_low=20", "cal_early=true", "clipboard=false", "clipboard_keep=false",
             "clipboard_max=5", "fahrenheit=false", "focus=25", "focus_quiet=false", "hide_fullscreen=true",
             "hud_brightness=true", "hud_caps=true", "hud_language=true", "hud_volume=true", "language=1", "long_break=15",
@@ -548,7 +550,7 @@ mod tests {
             "prayer_city=17", "prayer_early=false", "prayer_lat=0", "prayer_lon=0", "prayer_method=0",
             "prayer_pause_media=false", "prayer_reminder=true", "prayer_resume_media=false", "reduce_motion=false", "shelf_clear=false",
             "short_break=5", "show_clock=true", "size=0", "snooze=10", "sound=true", "startup=false", "status_ring=0",
-            "today_page=false", "todo_end=true", "todo_start=true", "water_snooze=10", "weather_city=17",
+            "today_page=false", "todo_end=true", "todo_start=true", "update_daily=false", "water_snooze=10", "weather_city=17",
             "week_monday=false", "welcomed=false", "widget_city1=5", "widget_city2=13", "widget_event=1", "widget_left=0",
             "widget_my_date=", "widget_my_name=", "widget_right=1",
         ];

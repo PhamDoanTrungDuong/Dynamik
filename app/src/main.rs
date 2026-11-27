@@ -316,6 +316,9 @@ struct App {
     note_copied: Option<(usize, Instant)>, // which note was just copied (by place: texts can repeat)
     note_select: Option<HashSet<usize>>, // choosing notes to delete: the places ticked
     note_delete_at: Option<Instant>,      // the first click of "Delete (N)" (a second within 3 s deletes)
+    update: std::sync::Arc<std::sync::Mutex<online::Update>>, // what "Check for updates" found
+    update_checked: Option<Instant>,      // the last check made by itself (once a day)
+    update_popup: bool,                   // say a newer version in a pop-up (checks made by itself only)
     form: Option<(Option<usize>, String, String, u16)>, // (editing index, title, "HH:MM", minutes)
     todo_edit: bool,
     // water
@@ -504,6 +507,7 @@ impl App {
             // Tidied at start too, so notes done over 3 days ago are gone before the first change.
             notes: if shot_notes { demo_notes() } else { let mut n = load_notes(); tidy_notes(&mut n, now.date(), s.note_done_days); n },
             note_draft: String::new(), note_focus: false, note_copied: None, note_delete_at: None,
+            update: Default::default(), update_checked: None, update_popup: false,
             // A screenshot of choosing notes: --page 8 --demo --select (the first two ticked).
             note_select: (shot_notes && std::env::args().any(|a| a == "--select")).then(|| HashSet::from([0, 1])),
             water_day, drank, in_bottle, hours, fired, water_snooze: None, water_settings: false, reset_armed: None, settings_reset: None,
@@ -704,6 +708,7 @@ impl App {
         self.tick_media_resume();
         self.tick_events();
         self.tick_battery_news();
+        self.tick_update();
         self.watch_indicators();
         self.close_finished_popup();
     }
@@ -931,6 +936,26 @@ impl App {
 
     /// Battery news isn't lost behind another pop-up: it takes the place of one that needs no
     /// answer (a volume bar, a notification…), or waits for one that does (Drank / Snooze…).
+    /// Settings › Data › "Check for updates once a day": a minute after start, then every 24 hours.
+    /// A newer version found this way is said once in a pop-up.
+    fn tick_update(&mut self) {
+        if self.shot.is_some() {
+            return;
+        }
+        if self.s.update_daily && self.started.elapsed().as_secs() > 60 && self.update_checked.is_none_or(|at| at.elapsed().as_secs() > 24 * 3600) {
+            self.update_checked = Some(Instant::now());
+            self.update_popup = true;
+            online::check_update(&self.update);
+        }
+        let found = self.update.lock().unwrap().clone();
+        if let online::Update::Newer(v, _) = found {
+            if self.update_popup && self.alert.is_none() {
+                self.update_popup = false;
+                self.alert = Some(Alert { title: tr("Version {} is out", &[&v]), body: t("Get it in Settings › Data").into(), kind: Kind::Hint, at: Instant::now() });
+            }
+        }
+    }
+
     fn tick_battery_news(&mut self) {
         let passing = self.alert.as_ref().is_none_or(|a| matches!(a.kind, Kind::Hud(..) | Kind::Notice(..) | Kind::Network(_) | Kind::Bluetooth(_) | Kind::Battery(..) | Kind::About | Kind::Hint | Kind::Song));
         if passing {
