@@ -168,6 +168,27 @@ impl App {
                 p.galley(pos2(r.left() + 14.0, r.top() + 96.0 - g.size().y / 2.0), g, DIM);
             }
             WEATHER_WIDGET => self.weather_widget(p, r),
+            DEVICES_WIDGET => {
+                // Up to three connected devices: their mark, name and battery (red when low).
+                title(t("DEVICES"));
+                let devices = self.bluetooth.lock().unwrap().clone().unwrap_or_default();
+                if devices.is_empty() {
+                    p.text(pos2(r.left() + 14.0, r.top() + 60.0), Align2::LEFT_CENTER, t("No devices"), bold(15.0), WHITE);
+                    p.text(pos2(r.left() + 14.0, r.top() + 82.0), Align2::LEFT_CENTER, t("Bluetooth and Xbox controllers show here"), reg(11.0), DIM);
+                }
+                for (k, (_, name, battery, kind)) in devices.iter().take(3).enumerate() {
+                    let y = r.top() + 42.0 + k as f32 * 26.0;
+                    device_icon(p, pos2(r.left() + 22.0, y), 7.0, WHITE, *kind);
+                    let pct = battery.map_or("—".to_string(), |b| format!("{b}%"));
+                    let low = battery.is_some_and(|b| b <= self.s.battery_low);
+                    let col = if low { RED } else { WHITE };
+                    let tag = p.layout_no_wrap(pct, bold(13.0), col);
+                    let right = r.right() - 14.0;
+                    let g = fit_line(p, name, reg(12.0), WHITE, right - tag.size().x - 10.0 - (r.left() + 38.0));
+                    p.galley(pos2(r.left() + 38.0, y - g.size().y / 2.0), g, WHITE);
+                    p.galley(pos2(right - tag.size().x, y - tag.size().y / 2.0), tag, col);
+                }
+            }
             _ => {
                 title(t("WATER"));
                 let c = pos2(r.left() + 50.0, r.top() + 72.0);

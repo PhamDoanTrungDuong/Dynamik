@@ -125,7 +125,6 @@ const WATER_LOG_DAYS: usize = 60; // days of water history kept
 const CAL_EARLY_MIN: u32 = 10; // calendar events also remind this many minutes before
 const SONG_POPUP_SECS: f32 = 3.0; // "Now playing" stays this long
 const SONG_QUIET_START_SECS: u64 = 10; // ...and doesn't show in the app's first seconds
-const HEADSET_LOW: u8 = 20; // a headset's battery at or under this (%) says so once
 const ASK_HISTORY_MAX: usize = 20; // questions ↑ can bring back
 const SKIP_SECS: f64 = 10.0; // back / forward, for a player with no previous or next track
 const UNDO_SECS: f32 = 10.0; // how long the Water page offers to take a drink back
@@ -141,8 +140,9 @@ const LUNAR_NEW_YEAR: [(i32, u32, u32); 15] = [
     (2026, 2, 17), (2027, 2, 6), (2028, 1, 26), (2029, 2, 13), (2030, 2, 3), (2031, 1, 23), (2032, 2, 11), (2033, 1, 31),
     (2034, 2, 19), (2035, 2, 8), (2036, 1, 28), (2037, 2, 15), (2038, 2, 4), (2039, 1, 24), (2040, 2, 12),
 ];
-const WIDGETS: [&str; 9] = ["This week", "Battery", "Next prayer", "Focus today", "World clock", "Moon", "Countdown", "Water", "Weather"];
+const WIDGETS: [&str; 10] = ["This week", "Battery", "Next prayer", "Focus today", "World clock", "Moon", "Countdown", "Water", "Weather", "Devices"];
 const WEATHER_WIDGET: usize = 8;
+const DEVICES_WIDGET: usize = 9;
 // Estimated Islamic dates (official announcements can differ by a day).
 const RAMADAN: [(i32, u32, u32); 5] = [(2026, 2, 18), (2027, 2, 8), (2028, 1, 28), (2029, 1, 16), (2030, 1, 5)];
 const EID_FITR: [(i32, u32, u32); 5] = [(2026, 3, 20), (2027, 3, 10), (2028, 2, 27), (2029, 2, 14), (2030, 2, 4)];
@@ -236,7 +236,7 @@ enum HudKind { Volume, Muted, Brightness, Caps, Lang }
 /// Asking Windows where this PC is, for "My location".
 #[derive(Clone, Copy, PartialEq)]
 enum Locating { Idle, Busy, Failed, Got(f64, f64) }
-enum Kind { Drink, Refill, TaskStart(usize), TaskEnd(usize), Event(u32), Hint, Song, Prayer(u32, bool), Battery(u8, bool), Hud(HudKind, f32), Network(u8), Bluetooth(Option<u8>), Notice(String, String, u32), Info, About }
+enum Kind { Drink, Refill, TaskStart(usize), TaskEnd(usize), Event(u32), Hint, Song, Prayer(u32, bool), Battery(u8, bool), Hud(HudKind, f32), Network(u8), Bluetooth(Option<u8>, media::Gadget), Notice(String, String, u32), Info, About }
 struct Alert { title: String, body: String, kind: Kind, at: Instant }
 
 /// A critically-tuned spring for one value.
@@ -368,10 +368,10 @@ struct App {
     last_lang: u16,
     network: std::sync::Arc<std::sync::Mutex<Option<(String, u8)>>>,
     last_network: Option<(String, u8)>,
-    bluetooth: std::sync::Arc<std::sync::Mutex<Option<Vec<media::Headset>>>>,
+    bluetooth: std::sync::Arc<std::sync::Mutex<Option<Vec<media::Device>>>>,
     last_headsets: Option<HashSet<u64>>,
-    headset_names: std::collections::HashMap<u64, String>, // the headsets last seen, to name one that goes away
-    headset_low_told: HashSet<u64>, // headsets already told of a low battery (until charged again)
+    headset_names: std::collections::HashMap<u64, (String, media::Gadget)>, // the devices last seen, to name one that goes away
+    headset_low_told: HashSet<u64>, // devices already told of a low battery (until charged again)
     notices: std::sync::Arc<std::sync::Mutex<Vec<media::Notice>>>,
     // Where the Weather widget looks (None while it isn't shown), what it found, and currency rates.
     weather_place: std::sync::Arc<std::sync::Mutex<Option<(f64, f64)>>>,
@@ -412,6 +412,7 @@ impl App {
         s.today_page |= shot.is_some() && page == TODAY_PAGE;
         let shot_demo = shot.is_some() && page == TODAY_PAGE && std::env::args().any(|a| a == "--demo");
         let shot_notes = shot.is_some() && page == NOTE_PAGE && std::env::args().any(|a| a == "--demo");
+        let shot_devices = shot.is_some() && page == 6 && std::env::args().any(|a| a == "--demo");
         let shot_demo_ask = shot.is_some() && std::env::args().any(|a| a == "--ask") && std::env::args().any(|a| a == "--demo");
         let now = Local::now().naive_local();
         let w = kv(&read("water.txt"));
@@ -521,7 +522,7 @@ impl App {
             shelf, shelf_view: if !live && std::env::args().any(|a| a == "--clips") { ShelfView::Clipboard } else { ShelfView::Files },
             clips, clipboard, last_clip, copied: None,
             battery: battery(), prayer_fired: HashSet::new(), hidden: false, media: demo_music(media::Media::start(s.lyrics, live), !live && page == 0), lyrics_open: false, volume: media::volume_watch(), last_volume: None, last_caps: caps_lock(), last_lang: input_lang(), network: media::network_watch(), last_network: None,
-            bluetooth: if live { media::bluetooth_watch() } else { Default::default() }, last_headsets: None, headset_names: Default::default(), headset_low_told: HashSet::new(),
+            bluetooth: if live { media::bluetooth_watch() } else { std::sync::Arc::new(std::sync::Mutex::new(shot_devices.then(demo_devices))) }, last_headsets: None, headset_names: Default::default(), headset_low_told: HashSet::new(),
             notices: if live && s.notifications { media::notification_watch() } else { Default::default() },
             weather_place: weather_place.clone(),
             // --weather SYMBOL fills a screenshot's Weather widget (no network).
@@ -957,7 +958,7 @@ impl App {
     }
 
     fn tick_battery_news(&mut self) {
-        let passing = self.alert.as_ref().is_none_or(|a| matches!(a.kind, Kind::Hud(..) | Kind::Notice(..) | Kind::Network(_) | Kind::Bluetooth(_) | Kind::Battery(..) | Kind::About | Kind::Hint | Kind::Song));
+        let passing = self.alert.as_ref().is_none_or(|a| matches!(a.kind, Kind::Hud(..) | Kind::Notice(..) | Kind::Network(_) | Kind::Bluetooth(..) | Kind::Battery(..) | Kind::About | Kind::Hint | Kind::Song));
         if passing {
             if let Some(mut news) = self.battery_news.take() {
                 news.at = Instant::now();
@@ -977,7 +978,7 @@ impl App {
                 Kind::Network(_) => age > NET_POPUP_SECS,
                 Kind::Hud(..) => age > HUD_SECS,
                 Kind::Battery(..) => age > BATTERY_POPUP_SECS,
-                Kind::Bluetooth(_) => age > BT_POPUP_SECS,
+                Kind::Bluetooth(..) => age > BT_POPUP_SECS,
                 // Longer messages stay longer, and none goes while the pointer rests on it.
                 Kind::Notice(..) => age > notice_secs(&a.title, &a.body) && self.last_inside.elapsed().as_secs_f32() > NOTICE_AFTER_HOVER_SECS,
                 Kind::About => age > ABOUT_SECS,

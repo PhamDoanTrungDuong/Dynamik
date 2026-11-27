@@ -497,13 +497,57 @@ mod tests {
 }
 
 /// A connected Bluetooth headset: address, name and battery percent when the device reports one.
-pub type Headset = (u64, String, Option<u8>);
+/// A connected device with a battery or a kind worth showing: (id, name, battery %, kind).
+pub type Device = (u64, String, Option<u8>, Gadget);
 
-/// Connected Bluetooth audio devices. Like the original: device ids from cfgmgr32 under BTHENUM,
-/// the battery from DEVPKEY {104EA319-...} 2, and the connection state and name from
+/// What a device is, for its icon and words.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Gadget {
+    Headset,
+    Mouse,
+    Keyboard,
+    Controller,
+    Other,
+}
+
+/// The kind from a Bluetooth class of device: major class 4 is audio/video, 5 a peripheral whose
+/// minor bits say keyboard (01), pointer (10) or both (11), with joystick / gamepad subtypes 1 / 2.
+pub fn gadget_of(cod: u32) -> Gadget {
+    let minor = (cod >> 2) & 0x3f;
+    match (cod >> 8) & 0x1f {
+        4 => Gadget::Headset,
+        5 if matches!(minor & 0x0f, 1 | 2) => Gadget::Controller,
+        5 if minor & 0x30 == 0x20 => Gadget::Mouse,
+        5 if minor & 0x30 != 0 => Gadget::Keyboard,
+        _ => Gadget::Other,
+    }
+}
+
+/// Ids for Xbox controllers (slots 0-3), above any 48-bit Bluetooth address.
+const XINPUT_ID: u64 = 1 << 56;
+
+/// An Xbox controller's battery in slot 0-3, from XInput's four levels; None for no controller or
+/// a wired one (which reports no battery).
+fn xinput_battery(slot: u32) -> Option<u8> {
+    use windows_sys::Win32::UI::Input::XboxController::{XInputGetBatteryInformation, BATTERY_DEVTYPE_GAMEPAD, BATTERY_TYPE_ALKALINE, BATTERY_TYPE_NIMH, XINPUT_BATTERY_INFORMATION};
+    let mut info: XINPUT_BATTERY_INFORMATION = unsafe { std::mem::zeroed() };
+    if unsafe { XInputGetBatteryInformation(slot, BATTERY_DEVTYPE_GAMEPAD, &mut info) } != 0 {
+        return None;
+    }
+    matches!(info.BatteryType, BATTERY_TYPE_ALKALINE | BATTERY_TYPE_NIMH).then(|| xinput_percent(info.BatteryLevel))
+}
+
+/// XInput's Empty / Low / Medium / Full as a percentage.
+fn xinput_percent(level: u8) -> u8 {
+    [10, 40, 70, 100][level.min(3) as usize]
+}
+
+/// Connected Bluetooth devices (headsets, mice, keyboards, controllers, and anything else that
+/// reports a battery) and Xbox controllers. Like the original: device ids from cfgmgr32 under
+/// BTHENUM, the battery from DEVPKEY {104EA319-...} 2, and the connection state, name and class from
 /// Windows.Devices.Bluetooth.BluetoothDevice, whose ConnectionStatusChanged wakes the look.
-pub fn bluetooth_watch() -> Arc<Mutex<Option<Vec<Headset>>>> {
-    use windows::{Devices::Bluetooth::{BluetoothConnectionStatus, BluetoothDevice, BluetoothMajorClass}, Foundation::TypedEventHandler};
+pub fn bluetooth_watch() -> Arc<Mutex<Option<Vec<Device>>>> {
+    use windows::{Devices::Bluetooth::{BluetoothConnectionStatus, BluetoothDevice}, Foundation::TypedEventHandler};
     let shared = Arc::new(Mutex::new(None));
     let out = shared.clone();
     let (tx, rx) = mpsc::channel::<()>();
@@ -530,15 +574,24 @@ pub fn bluetooth_watch() -> Arc<Mutex<Option<Vec<Headset>>>> {
                     devices.insert(addr, dev);
                 }
                 let dev = &devices[&addr];
-                let audio = dev.ClassOfDevice().and_then(|c| c.MajorClass()).is_ok_and(|m| m == BluetoothMajorClass::AudioVideo);
-                if !(audio && dev.ConnectionStatus().is_ok_and(|s| s == BluetoothConnectionStatus::Connected)) {
+                let kind = dev.ClassOfDevice().and_then(|c| c.RawValue()).map_or(Gadget::Other, gadget_of);
+                let battery = nodes.iter().filter(|n| n.0 == addr).find_map(|n| n.1);
+                // Phones, PCs and the like only when they report a battery.
+                let shown = kind != Gadget::Other || battery.is_some();
+                if !(shown && dev.ConnectionStatus().is_ok_and(|s| s == BluetoothConnectionStatus::Connected)) {
                     since.remove(&addr);
                     continue;
                 }
-                let battery = nodes.iter().filter(|n| n.0 == addr).find_map(|n| n.1);
                 if battery.is_some() || since.entry(addr).or_insert_with(Instant::now).elapsed() >= Duration::from_secs(5) {
                     let name = dev.Name().map(|n| n.to_string()).unwrap_or_else(|_| "Bluetooth".into());
-                    now.push((addr, name, battery));
+                    now.push((addr, name, battery, kind));
+                }
+            }
+            // shortcut: Xbox controllers are looked at with the Bluetooth list (a change, or every
+            // 60 s), so one switched on can take up to a minute to show; XInput sends no events.
+            for slot in 0..4u32 {
+                if let Some(b) = xinput_battery(slot) {
+                    now.push((XINPUT_ID + slot as u64, crate::i18n::tr("Xbox controller {}", &[&(slot + 1)]), Some(b), Gadget::Controller));
                 }
             }
             let waiting = since.keys().any(|a| !now.iter().any(|h| h.0 == *a));
@@ -848,7 +901,18 @@ mod logo_tests {
 
 #[cfg(test)]
 mod bluetooth_tests {
-    use super::bth_address;
+    use super::{bth_address, gadget_of, xinput_percent, Gadget};
+
+    #[test]
+    fn device_kinds_from_class_and_xinput_levels() {
+        assert_eq!(gadget_of(0x240404), Gadget::Headset); // audio/video, wearable headset
+        assert_eq!(gadget_of(0x002580), Gadget::Mouse); // peripheral, pointing
+        assert_eq!(gadget_of(0x002540), Gadget::Keyboard); // peripheral, keyboard
+        assert_eq!(gadget_of(0x0025c0), Gadget::Keyboard); // keyboard + pointer combo
+        assert_eq!(gadget_of(0x002508), Gadget::Controller); // peripheral, gamepad
+        assert_eq!(gadget_of(0x5a020c), Gadget::Other); // a phone
+        assert_eq!([0u8, 1, 2, 3, 9].map(xinput_percent), [10, 40, 70, 100, 100]);
+    }
 
     #[test]
     fn bluetooth_address_from_instance_id() {

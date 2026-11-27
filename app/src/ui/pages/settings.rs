@@ -266,7 +266,7 @@ impl App {
                             switch_row(ui, "Input language", &mut s.hud_language);
                             switch_row(ui, "Battery", &mut s.popup_battery);
                             switch_row(ui, "Wi-Fi", &mut s.popup_wifi);
-                            switch_row(ui, "Bluetooth headset", &mut s.popup_bluetooth);
+                            switch_row(ui, "Bluetooth devices — headsets, mice, keyboards and controllers", &mut s.popup_bluetooth);
                             switch_row(ui, "Now playing — when the song changes", &mut s.popup_song);
                             switch_row(ui, "Hide in full screen — games, videos and slides that fill the screen", &mut s.hide_fullscreen);
                         });

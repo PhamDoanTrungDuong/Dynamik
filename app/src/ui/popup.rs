@@ -5,7 +5,7 @@ impl App {
     /// Volume, Caps Lock and keyboard-language changes show a short indicator, unless a pop-up
     /// that needs an answer is up.
     pub(crate) fn watch_indicators(&mut self) {
-        let free = self.alert.as_ref().is_none_or(|a| matches!(a.kind, Kind::Hud(..) | Kind::Info | Kind::Battery(..) | Kind::Bluetooth(_) | Kind::Notice(..) | Kind::Song));
+        let free = self.alert.as_ref().is_none_or(|a| matches!(a.kind, Kind::Hud(..) | Kind::Info | Kind::Battery(..) | Kind::Bluetooth(..) | Kind::Notice(..) | Kind::Song));
         let vol = *self.volume.lock().unwrap();
         if let (Some((v, m)), Some((ov, om))) = (vol, self.last_volume) {
             if self.s.hud_volume && free && (m != om || (v - ov).abs() > 0.004) {
@@ -36,39 +36,42 @@ impl App {
                 self.last_song = Some(key);
             }
         }
-        // A headset that was not connected at the last look shows once; those connected at start do not.
+        // A device that was not connected at the last look shows once; those connected at start do not.
         let heads = self.bluetooth.lock().unwrap().clone();
         if let Some(heads) = heads {
             let now: HashSet<u64> = heads.iter().map(|h| h.0).collect();
             let mut wait = false;
             if let Some(old) = &self.last_headsets {
                 let gone = old.iter().find(|id| !now.contains(id)).and_then(|id| self.headset_names.get(id).cloned());
-                if let Some((_, name, battery)) = heads.iter().find(|h| !old.contains(&h.0)) {
+                if let Some((_, name, battery, gadget)) = heads.iter().find(|h| !old.contains(&h.0)) {
                     if self.s.popup_bluetooth && free {
                         let body = battery.map_or(t("Connected").to_string(), |b| tr("Connected · {}%", &[&b]));
-                        self.alert = Some(Alert { title: name.clone(), body, kind: Kind::Bluetooth(*battery), at: Instant::now() });
+                        self.alert = Some(Alert { title: name.clone(), body, kind: Kind::Bluetooth(*battery, *gadget), at: Instant::now() });
                     }
                     // A pop-up waiting for an answer is up: show this one after it, not never.
                     wait = self.s.popup_bluetooth && !free;
-                } else if let Some(name) = gone {
+                } else if let Some((name, gadget)) = gone {
                     // One that went away (turned off, out of range, put in its case).
                     if self.s.popup_bluetooth && self.s.popup_headset_off && free {
-                        self.alert = Some(Alert { title: name, body: t("Disconnected").into(), kind: Kind::Bluetooth(None), at: Instant::now() });
+                        self.alert = Some(Alert { title: name, body: t("Disconnected").into(), kind: Kind::Bluetooth(None, gadget), at: Instant::now() });
                     }
                     wait = self.s.popup_bluetooth && self.s.popup_headset_off && !free;
                 }
             }
-            // A headset's battery running low says so once, until it is charged again.
-            let low = heads.iter().find(|h| h.2.is_some_and(|b| b <= HEADSET_LOW) && !self.headset_low_told.contains(&h.0)).cloned();
-            self.headset_low_told.retain(|id| heads.iter().any(|h| h.0 == *id && h.2.is_some_and(|b| b <= HEADSET_LOW + 10)));
-            if let (Some((id, name, battery)), false) = (low, wait) {
-                if self.s.popup_bluetooth && self.s.popup_headset_off && free && self.alert.as_ref().is_none_or(|a| !matches!(a.kind, Kind::Bluetooth(_))) {
+            // A device's battery running low (Settings › Popups' low level, shared with the PC's) says so
+            // once, until it is charged again.
+            let level = self.s.battery_low;
+            let low = heads.iter().find(|h| h.2.is_some_and(|b| b <= level) && !self.headset_low_told.contains(&h.0)).cloned();
+            self.headset_low_told.retain(|id| heads.iter().any(|h| h.0 == *id && h.2.is_some_and(|b| b <= level + 10)));
+            if let (Some((id, name, battery, gadget)), false) = (low, wait) {
+                if self.s.popup_bluetooth && self.s.popup_headset_off && free && self.alert.as_ref().is_none_or(|a| !matches!(a.kind, Kind::Bluetooth(..))) {
                     self.headset_low_told.insert(id);
-                    self.alert = Some(Alert { title: name, body: tr("Headset battery low · {}%", &[&battery.unwrap_or(0)]), kind: Kind::Bluetooth(battery), at: Instant::now() });
+                    let words = if gadget == media::Gadget::Headset { "Headset battery low · {}%" } else { "Battery low · {}%" };
+                    self.alert = Some(Alert { title: name, body: tr(words, &[&battery.unwrap_or(0)]), kind: Kind::Bluetooth(battery, gadget), at: Instant::now() });
                 }
             }
             if !wait {
-                self.headset_names = heads.iter().map(|h| (h.0, h.1.clone())).collect();
+                self.headset_names = heads.iter().map(|h| (h.0, (h.1.clone(), h.3))).collect();
                 self.last_headsets = Some(now);
             }
         }
@@ -303,14 +306,14 @@ impl App {
                 }
                 p.circle_filled(icon + vec2(0.0, 8.0), 2.0, col);
             }
-            Kind::Bluetooth(battery) => {
-                // Blue ring holding the battery level around the Bluetooth rune; a headphone badge on the right.
+            Kind::Bluetooth(battery, gadget) => {
+                // Blue ring holding the battery level around the Bluetooth rune; the device's badge on the right.
                 ring(&p, icon, 14.0, 4.0, battery.map_or(1.0, |b| b as f32 / 100.0), BLUE);
                 bluetooth_rune(&p, icon, 6.0, WHITE);
                 let badge = pos2(right - 16.0, r.center().y);
                 p.circle_filled(badge, 20.0, Color32::from_rgb(12, 30, 44));
                 p.circle_stroke(badge, 20.0, Stroke::new(1.5_f32, BLUE_DARK));
-                headphone_icon(&p, badge, 8.0, WHITE);
+                device_icon(&p, badge, 8.0, WHITE, gadget);
             }
             Kind::Notice(ref app, ref id, more) => {
                 // One calm line: the app's logo (or its initial in a dot of its own colour), who sent

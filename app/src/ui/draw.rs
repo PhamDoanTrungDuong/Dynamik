@@ -412,6 +412,33 @@ pub(crate) fn headphone_icon(p: &egui::Painter, c: Pos2, s: f32, col: Color32) {
     }
 }
 
+/// A device's mark: headphones, a mouse, a keyboard, a game controller, or the Bluetooth rune.
+pub(crate) fn device_icon(p: &egui::Painter, c: Pos2, s: f32, col: Color32, kind: media::Gadget) {
+    let st = Stroke::new(1.5_f32, col);
+    match kind {
+        media::Gadget::Headset => headphone_icon(p, c, s, col),
+        media::Gadget::Mouse => {
+            p.rect_stroke(Rect::from_center_size(c, vec2(s * 1.1, s * 1.7)), s * 0.55, st, egui::StrokeKind::Middle);
+            p.line_segment([c - vec2(0.0, s * 0.85), c - vec2(0.0, s * 0.25)], st);
+        }
+        media::Gadget::Keyboard => {
+            let r = Rect::from_center_size(c, vec2(s * 2.0, s * 1.2));
+            p.rect_stroke(r, 2.0, st, egui::StrokeKind::Middle);
+            for k in 0..3 {
+                p.circle_filled(pos2(r.left() + s * (0.5 + k as f32 * 0.5), c.y - s * 0.15), 1.0, col);
+            }
+            p.line_segment([pos2(r.left() + s * 0.5, c.y + s * 0.3), pos2(r.right() - s * 0.5, c.y + s * 0.3)], st);
+        }
+        media::Gadget::Controller => {
+            p.rect_stroke(Rect::from_center_size(c, vec2(s * 2.1, s * 1.2)), s * 0.6, st, egui::StrokeKind::Middle);
+            p.line_segment([c + vec2(-s * 0.75, 0.0), c + vec2(-s * 0.25, 0.0)], st);
+            p.line_segment([c + vec2(-s * 0.5, -s * 0.25), c + vec2(-s * 0.5, s * 0.25)], st);
+            p.circle_filled(c + vec2(s * 0.5, 0.0), 1.3, col);
+        }
+        media::Gadget::Other => bluetooth_rune(p, c, s * 0.75, col),
+    }
+}
+
 pub(crate) fn speaker_icon(p: &egui::Painter, c: Pos2, col: Color32, muted: bool) {
     p.rect_filled(Rect::from_center_size(c + vec2(-6.0, 0.0), vec2(5.0, 8.0)), 1.0, col);
     p.add(Shape::convex_polygon(vec![c + vec2(-4.0, -4.0), c + vec2(2.0, -9.0), c + vec2(2.0, 9.0), c + vec2(-4.0, 4.0)], col, Stroke::NONE));

@@ -56,6 +56,16 @@ pub(crate) fn demo_recent() -> Vec<(i64, media::Notice)> {
 }
 
 /// `--popup bluetooth|notice|brightness` with --screenshot --resting shows that pop-up, for checking its look.
+/// Devices for the --page 6 --demo screenshot (a Devices widget).
+pub(crate) fn demo_devices() -> Vec<media::Device> {
+    use media::Gadget::*;
+    vec![
+        (1, "MX Master 3S".into(), Some(85), Mouse),
+        (2, "AirBuds Pro".into(), Some(15), Headset),
+        (3, "Xbox controller 1".into(), Some(70), Controller),
+    ]
+}
+
 /// Notes for the --page 8 --demo screenshot: one pinned, two open, one done.
 pub(crate) fn demo_notes() -> Vec<Note> {
     let now = Utc::now().timestamp();
@@ -74,7 +84,7 @@ pub(crate) fn demo_alert() -> Option<Alert> {
     let args: Vec<String> = std::env::args().collect();
     let which = args.iter().position(|a| a == "--popup").and_then(|i| args.get(i + 1))?;
     let (title, body, kind) = match which.as_str() {
-        "bluetooth" => ("AirBuds Pro", "Connected · 70%", Kind::Bluetooth(Some(70))),
+        "bluetooth" => ("AirBuds Pro", "Connected · 70%", Kind::Bluetooth(Some(70), media::Gadget::Headset)),
         "notice" => ("Nusa", "Hello, Nusa 1.2!", Kind::Notice("Messages".into(), String::new(), 0)),
         // An installed app's real logo (Windows Settings), as a notification from it would show.
         "notice-logo" => {
