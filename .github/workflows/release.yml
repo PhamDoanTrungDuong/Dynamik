@@ -1,0 +1,63 @@
+# A tag v<version> builds the release zip from that commit, writes SHA256SUMS.txt and attaches
+# both to the tag's GitHub release (made if it doesn't exist yet). Run by hand, it only builds
+# the zip and keeps it as a workflow artifact, without touching any release.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      LOCALAPPDATA: ${{ github.workspace }}\sandbox
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app
+      - name: Build and test
+        working-directory: app
+        run: |
+          cargo build --release
+          cargo test --release
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path app/Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
+            throw "Tag $env:GITHUB_REF_NAME does not match app/Cargo.toml version $version"
+          }
+          New-Item -ItemType Directory -Force dist/MyNotch | Out-Null
+          Copy-Item app/target/release/notch.exe dist/MyNotch/MyNotch.exe
+          Copy-Item packaging/install.cmd, packaging/uninstall.cmd, packaging/HUONG-DAN.txt dist/MyNotch/
+          $zip = "MyNotch-$version-windows-x64.zip"
+          Compress-Archive -Path dist/MyNotch -DestinationPath "dist/$zip"
+          $hash = (Get-FileHash "dist/$zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $zip" | Set-Content -Encoding ascii dist/SHA256SUMS.txt
+          "ZIP=dist/$zip" >> $env:GITHUB_ENV
+          Get-Content dist/SHA256SUMS.txt
+      - name: Keep the files (run by hand)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-files
+          path: |
+            ${{ env.ZIP }}
+            dist/SHA256SUMS.txt
+      - name: Attach to the release
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view $env:GITHUB_REF_NAME *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:GITHUB_REF_NAME --title "My Notch $($env:GITHUB_REF_NAME.TrimStart('v'))" --generate-notes
+          }
+          gh release upload $env:GITHUB_REF_NAME $env:ZIP dist/SHA256SUMS.txt --clobber

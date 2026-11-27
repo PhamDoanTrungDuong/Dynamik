@@ -1,0 +1,26 @@
+# Builds the notch and runs its tests on every push to main and on pull requests.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
+    env:
+      # Tests write settings files here, never in a real profile.
+      LOCALAPPDATA: ${{ github.workspace }}\sandbox
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app
+      - name: Build
+        run: cargo build --release
+      - name: Test
+        run: cargo test --release
