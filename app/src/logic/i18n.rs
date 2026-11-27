@@ -199,6 +199,7 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("Plug in now", "Cắm sạc ngay", "请立即充电", "Branchez maintenant"),
     ("Low battery", "Pin yếu", "电量低", "Batterie faible"),
     ("Plug in soon", "Sắp cần cắm sạc", "请尽快充电", "Branchez bientôt"),
+    ("{} left", "Còn {}", "剩余 {}", "Encore {}"),
     ("Fully charged", "Đã sạc đầy", "已充满", "Chargée"),
     ("You can unplug", "Có thể rút sạc", "可以拔掉电源了", "Vous pouvez débrancher"),
     ("Volume", "Âm lượng", "音量", "Volume"),

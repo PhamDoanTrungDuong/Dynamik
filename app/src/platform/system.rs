@@ -78,6 +78,32 @@ pub(crate) fn battery() -> Option<(u8, bool)> {
     Some((s.BatteryLifePercent, s.ACLineStatus == 1))
 }
 
+/// Minutes of battery left as Windows estimates them, on battery only (None while charging or
+/// before Windows has an estimate).
+pub(crate) fn battery_minutes_left() -> Option<u32> {
+    use windows_sys::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+    let mut s: SYSTEM_POWER_STATUS = unsafe { std::mem::zeroed() };
+    if unsafe { GetSystemPowerStatus(&mut s) } == 0 || s.ACLineStatus == 1 {
+        return None;
+    }
+    minutes_left(s.BatteryLifeTime)
+}
+
+/// `BatteryLifeTime` is seconds, or u32::MAX when unknown.
+fn minutes_left(secs: u32) -> Option<u32> {
+    (secs != u32::MAX && secs >= 60).then_some(secs / 60)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn battery_time_left_reads_windows_value() {
+        assert_eq!(super::minutes_left(7800), Some(130)); // 2 h 10 min
+        assert_eq!(super::minutes_left(u32::MAX), None);
+        assert_eq!(super::minutes_left(30), None);
+    }
+}
+
 pub(crate) fn beep() {
     unsafe { windows_sys::Win32::System::Diagnostics::Debug::MessageBeep(0) };
 }

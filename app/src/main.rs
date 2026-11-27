@@ -916,7 +916,7 @@ impl App {
                 } else if !ac && p < BATTERY_CRITICAL && op >= BATTERY_CRITICAL {
                     Some((t("Battery critical").to_string(), t("Plug in now").to_string()))
                 } else if !ac && p <= self.s.battery_low && op > self.s.battery_low {
-                    Some((t("Low battery").to_string(), t("Plug in soon").to_string()))
+                    Some((t("Low battery").to_string(), battery_minutes_left().map_or_else(|| t("Plug in soon").to_string(), |m| tr("{} left", &[&dur_text(m)]))))
                 } else if ac && p >= 100 && op < 100 {
                     Some((t("Fully charged").to_string(), t("You can unplug").to_string()))
                 } else {

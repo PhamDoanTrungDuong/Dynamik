@@ -79,7 +79,12 @@ impl App {
                         if ac { bolt(p, c, 11.0, WHITE) } else { p.text(c, Align2::CENTER_CENTER, format!("{pct}"), bold(14.0), WHITE); }
                         p.text(pos2(r.left() + 92.0, r.top() + 50.0), Align2::LEFT_CENTER, format!("{pct}%"), bold(24.0), WHITE);
                         p.text(pos2(r.left() + 92.0, r.top() + 76.0), Align2::LEFT_CENTER, if ac { t("Charging") } else { t("On battery") }, bold(12.0), if ac { GREEN } else { WHITE });
-                        p.text(pos2(r.left() + 92.0, r.top() + 93.0), Align2::LEFT_CENTER, if ac { t("Plugged in") } else { t("Unplugged") }, reg(11.0), DIM);
+                        // On battery: how long it lasts, when Windows has an estimate.
+                        let sub = match battery_minutes_left() {
+                            Some(m) if !ac => tr("{} left", &[&dur_text(m)]),
+                            _ => if ac { t("Plugged in") } else { t("Unplugged") }.to_string(),
+                        };
+                        p.text(pos2(r.left() + 92.0, r.top() + 93.0), Align2::LEFT_CENTER, sub, reg(11.0), DIM);
                     }
                     None => {
                         ring(p, c, 28.0, 6.0, 1.0, GREEN);
