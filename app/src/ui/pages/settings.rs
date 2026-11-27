@@ -128,6 +128,7 @@ impl App {
                             combo(ui, "Tray icon", &mut s.app_icon, &tray::ICON_NAMES);
                             switch_row(ui, "Minimal notch — shrinks to a thin bar when nothing is going on", &mut s.minimal);
                             switch_row(ui, "Mascot — a little friend that lives in the notch", &mut s.mascot);
+                            switch_row(ui, "Reduce motion — pages, the notch and pop-ups change without moving", &mut s.reduce_motion);
                             pick(ui, "Open the notch on", &mut s.open_click, &[false, true], &["Hover", "Click"]);
                             // The shortcuts, and whether another app has taken one.
                             let taken = tray::hotkeys_taken();

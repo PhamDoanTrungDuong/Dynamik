@@ -89,6 +89,15 @@ pub(crate) fn battery_minutes_left() -> Option<u32> {
     minutes_left(s.BatteryLifeTime)
 }
 
+/// Windows' "Animation effects" (Settings › Accessibility › Visual effects): the first value of
+/// Settings › General › Reduce motion.
+pub(crate) fn windows_animates() -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SystemParametersInfoW, SPI_GETCLIENTAREAANIMATION};
+    let mut on: i32 = 1;
+    unsafe { SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, (&mut on as *mut i32).cast(), 0) };
+    on != 0
+}
+
 /// `BatteryLifeTime` is seconds, or u32::MAX when unknown.
 fn minutes_left(secs: u32) -> Option<u32> {
     (secs != u32::MAX && secs >= 60).then_some(secs / 60)

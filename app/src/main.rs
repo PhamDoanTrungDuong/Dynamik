@@ -998,6 +998,16 @@ impl App {
             self.spring = if self.last_target == POPUP && !self.expanded { SPRING_FROM_POPUP } else { SPRING };
             self.last_target = target;
         }
+        // Reduce motion: the shape and the pages go straight to where they are going, and egui's
+        // own switches and menus stop animating.
+        let anim = if self.s.reduce_motion { 0.0 } else { 1.0 / 12.0 };
+        if ctx.style().animation_time != anim {
+            ctx.style_mut(|s| s.animation_time = anim);
+        }
+        if self.s.reduce_motion {
+            (self.w, self.h, self.content) = (Spring { x: target.x, v: 0.0 }, Spring { x: target.y, v: 0.0 }, Spring { x: 1.0, v: 0.0 });
+            self.page_anim = self.pos() as f32;
+        }
         let mut moving = self.w.step(target.x, dt, self.spring);
         moving |= self.h.step(target.y, dt, self.spring);
         // Content fades in once the shape has mostly arrived, and out at once when it leaves.

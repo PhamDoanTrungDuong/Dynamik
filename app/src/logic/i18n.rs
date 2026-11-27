@@ -329,6 +329,7 @@ const TABLE: &[(&str, &str, &str, &str)] = &[
     ("Classic light", "Cổ điển sáng", "经典浅色", "Classique clair"),
     ("Minimal notch — shrinks to a thin bar when nothing is going on", "Notch tối giản — thu thành vạch mảnh khi không có gì diễn ra", "极简刘海 — 空闲时缩成一条细线", "Encoche minimale — se réduit à une fine barre au repos"),
     ("Mascot — a little friend that lives in the notch", "Linh vật — người bạn nhỏ sống trong notch", "吉祥物 — 住在刘海里的小伙伴", "Mascotte — un petit compagnon dans l'encoche"),
+    ("Reduce motion — pages, the notch and pop-ups change without moving", "Giảm chuyển động — trang, notch và pop-up đổi mà không trượt hay nảy", "减少动画 — 页面、刘海和弹窗切换时不滑动", "Réduire les animations — pages, encoche et pop-ups changent sans bouger"),
     ("Open the notch on", "Mở notch khi", "打开刘海的方式", "Ouvrir l'encoche au"),
     ("Hover", "Rê chuột", "悬停", "Survol"),
     ("Click", "Bấm", "点击", "Clic"),

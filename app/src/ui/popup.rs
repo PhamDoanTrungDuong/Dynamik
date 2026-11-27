@@ -319,7 +319,7 @@ impl App {
                 let y = r.center().y;
                 let dot = pos2(r.left() + 30.0, y);
                 // On arrival the icon pops in, and a cyan-to-violet light runs once along the bottom.
-                let s = pop_in(since);
+                let s = if self.s.reduce_motion { 1.0 } else { pop_in(since) };
                 if let Some(tex) = self.logo_texture(ui.ctx(), &id) {
                     // On a dark plate, so logos drawn for light backgrounds still show.
                     p.rect_filled(Rect::from_center_size(dot, vec2(26.0, 26.0) * s), 7.0 * s, Color32::from_gray(38));
@@ -330,7 +330,7 @@ impl App {
                     p.text(dot, Align2::CENTER_CENTER, initial, bold(13.0 * s), WHITE);
                 }
                 let u = since / NOTICE_SWEEP_SECS;
-                if u < 1.0 {
+                if u < 1.0 && !self.s.reduce_motion {
                     let fade = (1.0 - u) * (u * 6.0).min(1.0);
                     let col = lerp_color(Color32::from_rgb(34, 211, 238), Color32::from_rgb(110, 50, 200), u).gamma_multiply(fade);
                     let cx = r.left() + 30.0 + (r.width() - 60.0) * u;
