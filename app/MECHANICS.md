@@ -423,6 +423,29 @@ set), back to ~32 MB within 20 s of closing. Cover art and app logos account for
   chosen one shows on the right under its heading, rows split by thin lines. General holds Pages,
   To-do holds Google Calendar, Popups holds Notifications. The panel is 660 x 450.
 
+## Devices, time left, reduce motion, updates (2026-11-27, ideas from battery-hub)
+
+- The Bluetooth watch (`media::bluetooth_watch`) keeps every connected BTHENUM device that is a
+  headset, mouse, keyboard or controller, or that reports a battery (phones and PCs only then); the
+  kind comes from the class of device (`media::gadget_of`: major 4 audio, 5 peripheral with minor
+  bits keyboard / pointer / gamepad). Xbox controllers come from `XInputGetBatteryInformation`
+  (slots 0-3, wired pads skipped; Empty/Low/Medium/Full = 10/40/70/100 %), looked at with the
+  Bluetooth list (on a connection change, or every 60 s). The headset pop-ups above now cover every
+  device, with a mark per kind; "battery low" uses Settings › Popups' low level (15/20/30 %), once
+  until the battery is 10 points above it. The Devices widget lists up to three.
+- PC battery: Windows' own estimate (`SYSTEM_POWER_STATUS.BatteryLifeTime`, unknown = `u32::MAX`)
+  shows as "2 h 10 min left" under the Battery widget and in the low-battery pop-up.
+- Reduce motion (Settings › General; the first value is Windows' Animation effects,
+  `SPI_GETCLIENTAREAANIMATION`): the notch's springs and the page slide jump to their end, egui's
+  animation time is 0, and notifications neither pop in nor run their light.
+- Check for updates (Settings › Data): `api.github.com/repos/.../releases/latest`, only when
+  "Check" is pressed or, with "once a day" on (off by default), a minute after start and every
+  24 h; a newer `v*` tag is shown with its page (opened only if it is on github.com), and a daily
+  check says so once in a pop-up.
+- Releases: a `v<version>` tag runs `.github/workflows/release.yml`, which builds, tests and
+  packages the same zip as by hand, writes `SHA256SUMS.txt` and attaches both to the release;
+  `ci.yml` builds and tests every push.
+
 ## Note page (2026-11-25, not in the original)
 
 - Page id 8 (ids are saved in `page_order`, so the new page takes the next id) shown after To-do.
